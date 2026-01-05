@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+notes.txt
+posts.json
+node_modules/
+linkedin-profile-scraper-api/
+
+
+

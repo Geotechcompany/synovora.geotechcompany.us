@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: linkedin-automation-backend
+    env: docker
+    plan: starter
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    envVars:
+      - key: PORT
+        value: 8000
+
+
+
