@@ -8,6 +8,52 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: OTEL_SDK_DISABLED
+        value: "true"
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_AUTH_METHOD
+        value: PLAIN
+      # Note: Set the following environment variables in Render Dashboard (Environment tab):
+      # - OPENAI_API_KEY
+      # - GMAIL_USER
+      # - GMAIL_PASS
+      # - LINKEDIN_TOKEN
+      # - LINKEDIN_CLIENT_ID
+      # - LINKEDIN_CLIENT_SECRET
+      # - LINKEDIN_REDIRECT_URI (update with your Render URL)
+      # - PROFILE_URN
+      # - MONGODB_URI
+      # - NVIDIA_API_KEY
+      # - NVIDIA_MODEL
+      # - HF_TOKEN
+      # - HF_IMAGE_MODEL
+      # - HF_PROVIDER
+      # - GEMINI_API_KEY
+      # - CLERK_SECRET_KEY
+      # - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+      # - SERPER_API_KEY
+      # - SERPER_BASE_URL
+      # - LINKEDIN_SCRAPER_LI_AT
+      # - LINKEDIN_SCRAPER_PROFILE_URL
+      # - LINKEDIN_SCRAPER_TIMEOUT
+      # - FRONTEND_URL (update with your frontend URL)
+      # - DATABASE_URL
+      # - DIRECT_URL
+      # - SUPABASE_URL
+      # - SUPABASE_SERVICE_ROLE_KEY
+      # - SUPABASE_ANON_KEY
+      # - SUPABASE_POSTS_TABLE
+      # - SUPABASE_USERS_TABLE
+      # - SUPABASE_STORAGE_BUCKET
+      # - APP_ENCRYPTION_KEY
+      # - CLERK_AUDIENCE
+      # - SCHEDULER_ENABLED
+      # - SCHEDULER_POLL_SECONDS
 
 
 
