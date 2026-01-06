@@ -13,4 +13,5 @@ playwright>=1.47.0
 python-dateutil>=2.8.2
 PyJWT[crypto]>=2.8.0
 cryptography>=42.0.0
+Pillow>=10.0.0
 
