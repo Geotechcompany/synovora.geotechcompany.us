@@ -627,7 +627,7 @@ async def suggest_topics_endpoint(req: Request, request: TopicSuggestRequest):
 @app.post("/generate/image")
 async def generate_post_image_endpoint(request: PostImageRequest):
     """
-    Generate an illustrative image for a LinkedIn post using Hugging Face.
+    Generate an illustrative image for a LinkedIn post using OpenAI DALL-E.
     """
     try:
         prompt_base = request.prompt or "Professional LinkedIn brand visual"
