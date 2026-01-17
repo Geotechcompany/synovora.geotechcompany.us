@@ -33,7 +33,12 @@ const AuthPage = () => {
             <img
               src={BRAND.logoSrc}
               alt={`${BRAND.appName} logo`}
-              className="h-16 md:h-20 w-auto max-w-[280px] md:max-w-[360px] object-contain brightness-0 invert"
+              className="h-24 md:h-32 lg:h-40 w-auto max-w-[400px] md:max-w-[500px] lg:max-w-[600px] object-contain drop-shadow-lg"
+              onError={(e) => {
+                // Fallback if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
             />
           </div>
           <p className="uppercase tracking-[0.3em] md:tracking-[0.4em] text-emerald-400 text-[10px] md:text-xs mb-3 md:mb-4 font-semibold">
@@ -77,7 +82,12 @@ const AuthPage = () => {
           <img
             src={BRAND.logoSrc}
             alt={`${BRAND.appName} logo`}
-            className="h-10 w-auto object-contain"
+            className="h-16 md:h-20 w-auto object-contain drop-shadow-sm"
+            onError={(e) => {
+              // Fallback if image fails to load
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
           />
         </div>
         <div className="text-center">
@@ -115,6 +125,18 @@ const AuthPage = () => {
       {/* Form Section - Centered */}
       <div className="flex-1 flex items-center justify-center bg-slate-50 min-h-[calc(100vh-200px)] md:min-h-screen px-4 py-8">
         <div className="w-full max-w-md">
+          {/* Logo on form section for desktop */}
+          <div className="hidden md:flex justify-center mb-6">
+            <img
+              src={BRAND.logoSrc}
+              alt={`${BRAND.appName} logo`}
+              className="h-20 lg:h-24 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
+            />
+          </div>
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 md:p-8">
             {view === 'signin' ? (
               <SignIn
