@@ -196,7 +196,21 @@ def _get_supabase_client():
         raise ValueError(
             "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (recommended) in .env"
         )
-    return create_client(supabase_url, supabase_key)
+    try:
+        client = create_client(supabase_url, supabase_key)
+        # Test connection with a simple query
+        client.table("posts").select("id").limit(1).execute()
+        return client
+    except Exception as e:
+        error_msg = str(e)
+        if "getaddrinfo failed" in error_msg or "ConnectError" in error_msg:
+            raise ConnectionError(
+                f"Cannot resolve Supabase hostname. Check your network connection and SUPABASE_URL.\n"
+                f"URL: {supabase_url}\n"
+                f"Error: {error_msg}\n"
+                f"Tip: Set PERSISTENCE_ALLOW_FILE_FALLBACK=1 in .env to use local file storage as fallback."
+            )
+        raise
 
 
 class PostDatabase:

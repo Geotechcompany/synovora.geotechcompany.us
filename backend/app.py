@@ -879,7 +879,17 @@ async def list_posts(status: Optional[str] = Query(None, description="Filter by 
             "posts": posts
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing posts: {str(e)}")
+        error_msg = str(e)
+        if "getaddrinfo failed" in error_msg or "ConnectError" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Database connection failed",
+                    "message": "Unable to connect to Supabase. Please check your network connection and Supabase configuration.",
+                    "hint": "Verify SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your .env file",
+                }
+            )
+        raise HTTPException(status_code=500, detail=f"Error listing posts: {error_msg}")
 
 
 @app.get("/profile/insights")
@@ -1283,7 +1293,17 @@ async def sync_clerk_user(payload: ClerkUserPayload):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error syncing user: {str(e)}")
+        error_msg = str(e)
+        if "getaddrinfo failed" in error_msg or "ConnectError" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Database connection failed",
+                    "message": "Unable to connect to Supabase. Please check your network connection.",
+                    "hint": "Verify SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your .env file",
+                }
+            )
+        raise HTTPException(status_code=500, detail=f"Error syncing user: {error_msg}")
 
 
 @app.get("/users/openai-key/status")
