@@ -493,18 +493,12 @@ const DashboardPage = () => {
 
         <div className="relative p-6 flex-1 overflow-y-auto">
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center shadow-lg shadow-slate-900/20">
-                <img
-                  src={BRAND.logoSrc}
-                  alt={`${BRAND.appName} logo`}
-                  className="h-7 w-auto max-w-[36px] object-contain brightness-0 invert"
-                />
-              </div>
-              <div className="leading-tight">
-                <p className="text-sm font-bold text-slate-900">{BRAND.appName}</p>
-                <p className="text-xs text-slate-500">Command Center</p>
-              </div>
+            <div className="flex items-center justify-center w-full">
+              <img
+                src={BRAND.logoSrc}
+                alt={`${BRAND.appName} logo`}
+                className="h-12 w-auto max-w-[200px] object-contain"
+              />
             </div>
             <button
               type="button"
