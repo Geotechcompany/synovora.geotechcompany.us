@@ -373,7 +373,12 @@ def _fetch_trending_topics(niche: str, topic_hint: str) -> dict:
 
 def _compute_content_stats() -> dict:
     """Aggregate basic analytics from stored posts."""
-    posts = _require_db().get_all_posts()
+    try:
+        posts = _require_db().get_all_posts()
+    except Exception as e:
+        # If database connection fails, return empty stats
+        print(f"Warning: Failed to fetch posts for stats: {e}")
+        posts = []
     total = len(posts)
     published_posts = [p for p in posts if p.get("status") == "published"]
     drafts = [p for p in posts if p.get("status") == "draft"]
@@ -905,7 +910,16 @@ async def profile_insights():
             "error": f"Failed to fetch LinkedIn profile data: {exc}"
         }
 
-    content_stats = _compute_content_stats()
+    try:
+        content_stats = _compute_content_stats()
+    except Exception as e:
+        print(f"Warning: Failed to compute content stats: {e}")
+        content_stats = {
+            "published": 0,
+            "avg_word_count": 0,
+            "last_published_at": None,
+            "recent_topics": [],
+        }
 
     profile_payload = {
         "first_name": profile_about.get("first_name") or profile_basic.get("localizedFirstName"),
