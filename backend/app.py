@@ -465,6 +465,100 @@ async def root():
 
 
 @app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/test/supabase")
+async def test_supabase_connection():
+    """
+    Test Supabase connection and return detailed diagnostics.
+    """
+    import socket
+    from urllib.parse import urlparse
+    
+    supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
+    supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    
+    result = {
+        "configured": bool(supabase_url and supabase_key),
+        "url": supabase_url if supabase_url else "Not set",
+        "has_service_key": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+        "has_anon_key": bool(os.getenv("SUPABASE_ANON_KEY")),
+        "connection_test": {},
+        "dns_test": {},
+    }
+    
+    if not supabase_url:
+        result["error"] = "SUPABASE_URL is not set in environment variables"
+        return result
+    
+    # Test DNS resolution
+    try:
+        parsed = urlparse(supabase_url)
+        hostname = parsed.hostname
+        if hostname:
+            result["dns_test"] = {
+                "hostname": hostname,
+                "resolved": False,
+            }
+            try:
+                ip_address = socket.gethostbyname(hostname)
+                result["dns_test"]["resolved"] = True
+                result["dns_test"]["ip_address"] = ip_address
+            except socket.gaierror as e:
+                result["dns_test"]["error"] = f"DNS resolution failed: {str(e)}"
+                result["dns_test"]["error_code"] = e.errno
+    except Exception as e:
+        result["dns_test"]["error"] = f"Failed to parse URL: {str(e)}"
+    
+    # Test Supabase client connection
+    if supabase_url and supabase_key:
+        try:
+            from utils.database import _get_supabase_client
+            client = _get_supabase_client()
+            result["connection_test"]["client_created"] = True
+            
+            # Try a simple query
+            try:
+                # Test with posts table
+                table_name = os.getenv("SUPABASE_POSTS_TABLE", "posts")
+                test_query = client.table(table_name).select("id").limit(1).execute()
+                result["connection_test"]["query_success"] = True
+                result["connection_test"]["table_accessible"] = True
+                result["connection_test"]["table_name"] = table_name
+            except Exception as query_error:
+                result["connection_test"]["query_success"] = False
+                result["connection_test"]["query_error"] = str(query_error)
+                # Check if it's a table not found error
+                if "relation" in str(query_error).lower() or "does not exist" in str(query_error).lower():
+                    result["connection_test"]["table_accessible"] = False
+                    result["connection_test"]["hint"] = "Table might not exist. Check your Supabase schema."
+                else:
+                    result["connection_test"]["table_accessible"] = None
+                    
+        except ConnectionError as e:
+            result["connection_test"]["client_created"] = False
+            result["connection_test"]["error"] = str(e)
+        except Exception as e:
+            result["connection_test"]["client_created"] = False
+            result["connection_test"]["error"] = f"Unexpected error: {str(e)}"
+            result["connection_test"]["error_type"] = type(e).__name__
+    
+    result["overall_status"] = (
+        "connected" if result.get("connection_test", {}).get("query_success") else
+        "dns_failed" if not result.get("dns_test", {}).get("resolved") else
+        "connection_failed" if result.get("connection_test", {}).get("client_created") == False else
+        "table_error" if result.get("connection_test", {}).get("table_accessible") == False else
+        "not_configured" if not result.get("configured") else
+        "unknown"
+    )
+    
+    return result
+
+
+@app.get("/health")
 async def health():
     """Health check endpoint."""
     return {
