@@ -3,3 +3,6 @@ export const BRAND = {
   logoSrc: '/synvoralogo.png',
 } as const;
 
+
+
+
