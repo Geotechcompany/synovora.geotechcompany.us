@@ -4,6 +4,7 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 
 import DashboardPage from './pages/Dashboard';
 import AuthPage from './pages/Auth';
+import AutomationsPage from './pages/Automations';
 import SettingsPage from './pages/Settings';
 import { syncClerkUser } from './lib/api';
 import { AppShellSkeleton } from './components/app-shell-skeleton';
@@ -54,6 +55,14 @@ function App() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/automations"
+        element={
+          <ProtectedRoute>
+            <AutomationsPage />
           </ProtectedRoute>
         }
       />

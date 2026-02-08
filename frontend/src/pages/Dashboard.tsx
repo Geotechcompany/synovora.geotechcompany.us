@@ -17,6 +17,7 @@ import {
   RefreshCcw,
   Ghost,
   Mail,
+  Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -583,6 +584,16 @@ const DashboardPage = () => {
               );
             })}
 
+            <button
+              type="button"
+              onClick={() => navigate('/automations')}
+              className="group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-700/50 transition"
+            >
+              <span className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 flex items-center justify-center transition">
+                <Zap className="h-4 w-4" />
+              </span>
+              <span className="flex-1 text-left">Automations</span>
+            </button>
             <button
               type="button"
               onClick={() => navigate('/settings')}

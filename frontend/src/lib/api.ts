@@ -1,4 +1,6 @@
 import type {
+  AutomationLogsResponse,
+  AutomationSetting,
   ClerkUserSyncPayload,
   EmailResponse,
   GeneratePostResponse,
@@ -176,6 +178,29 @@ export function openLinkedInConnect(
 ) {
   const query = clerkUserId ? `?clerk_user_id=${encodeURIComponent(clerkUserId)}` : '';
   window.location.assign(`${API_BASE}/auth/connect${query}`);
+}
+
+export async function getAutomationSetting(opts: { authToken: string }) {
+  return apiFetch<AutomationSetting>(`/me/automation`, {
+    headers: { ...authHeaders(opts.authToken) },
+  });
+}
+
+export async function setAutomationSetting(
+  payload: { enabled?: boolean; frequency?: 'daily' | 'weekly'; occupation?: string },
+  opts: { authToken: string },
+) {
+  return apiFetch<AutomationSetting>(`/me/automation`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(opts.authToken) },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAutomationLogs(opts: { authToken: string }, limit = 20) {
+  return apiFetch<AutomationLogsResponse>(`/me/automation/logs?limit=${limit}`, {
+    headers: { ...authHeaders(opts.authToken) },
+  });
 }
 
 export const API = {

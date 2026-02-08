@@ -48,6 +48,9 @@ from utils.database import (
     FileUserDatabase,
     MongoPostDatabase,
     MongoUserDatabase,
+    MongoAutomationLogStore,
+    FileAutomationLogStore,
+    SupabaseAutomationLogStore,
     get_supabase_storage_client,
 )
 from utils.image_generator import generate_post_image
@@ -78,6 +81,7 @@ app.add_middleware(
 # Initialize database: try MongoDB first, then Supabase, then file fallback
 db = None
 user_db = None
+automation_logs_store = None
 db_init_error = None
 _db_backend = None  # "mongo" | "supabase" | "file"
 
@@ -86,24 +90,28 @@ if (os.getenv("MONGO_DB_URL") or os.getenv("MONGODB_URI")):
     try:
         db = MongoPostDatabase()
         user_db = MongoUserDatabase()
+        automation_logs_store = MongoAutomationLogStore()
         _db_backend = "mongo"
         print("\n✅ Using MongoDB for persistence (MONGO_DB_URL / MONGODB_URI).\n")
     except Exception as exc:
         db_init_error = str(exc)
         db = None
         user_db = None
+        automation_logs_store = None
 
 # 2) Try Supabase if MongoDB didn't succeed and Supabase is configured
 if db is None and (os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY")):
     try:
         db = PostDatabase()
         user_db = UserDatabase()
+        automation_logs_store = SupabaseAutomationLogStore()
         _db_backend = "supabase"
         print("\n✅ Using Supabase for persistence.\n")
     except Exception as exc:
         db_init_error = str(exc)
         db = None
         user_db = None
+        automation_logs_store = None
 
 # 3) File fallback if enabled
 if db is None:
@@ -116,6 +124,7 @@ if db is None:
     if allow_file_fallback:
         db = FilePostDatabase(file_path=os.getenv("FILE_POSTS_PATH") or None)
         user_db = FileUserDatabase(file_path=os.getenv("FILE_USERS_PATH") or None)
+        automation_logs_store = FileAutomationLogStore()
         _db_backend = "file"
         print("\n⚠️  Database initialization failed. Falling back to local JSON persistence.")
         print("   Data will be stored on disk (development fallback).")
@@ -298,6 +307,12 @@ class PostImageRequest(BaseModel):
 class TopicSuggestRequest(BaseModel):
     occupation: str
     limit: int = 8
+
+
+class AutomationPatchRequest(BaseModel):
+    enabled: Optional[bool] = None
+    frequency: Optional[str] = None  # "daily" | "weekly"
+    occupation: Optional[str] = None
 
 
 def _storage_bucket() -> str:
@@ -720,6 +735,7 @@ async def generate_post(req: Request, request: PostGenerateRequest):
             image_mime_type=image_mime_type,
             image_url=image_url,
             image_storage_path=image_storage_path,
+            clerk_user_id=clerk_user_id,
         )
         
         response_payload = {
@@ -797,6 +813,137 @@ async def suggest_topics_endpoint(req: Request, request: TopicSuggestRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error suggesting topics: {str(e)}")
+
+
+@app.get("/me/automation")
+async def get_automation(req: Request):
+    """Get current user's automation settings (enabled, occupation, frequency, last_run_at)."""
+    clerk_user_id = _require_clerk_user_id(req)
+    _require_user_db()
+    record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+    return {
+        "enabled": bool(record.get("automation_enabled")),
+        "occupation": record.get("occupation"),
+        "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
+        "last_run_at": record.get("last_auto_run_at"),
+    }
+
+
+@app.patch("/me/automation")
+async def patch_automation(req: Request, body: AutomationPatchRequest):
+    """Update current user's automation settings. Set occupation before enabling."""
+    clerk_user_id = _require_clerk_user_id(req)
+    _require_user_db()
+    record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+    updates = {}
+    if body.enabled is not None:
+        if body.enabled and not (record.get("occupation") or "").strip() and not (body.occupation or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Set your profession (occupation) before enabling automation.",
+            )
+        updates["automation_enabled"] = body.enabled
+    if body.frequency is not None:
+        if body.frequency not in ("daily", "weekly"):
+            raise HTTPException(status_code=400, detail="frequency must be 'daily' or 'weekly'")
+        updates["automation_frequency"] = body.frequency
+    if body.occupation is not None:
+        updates["occupation"] = (body.occupation or "").strip() or None
+    if not updates:
+        record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+        return {
+            "enabled": bool(record.get("automation_enabled")),
+            "occupation": record.get("occupation"),
+            "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
+            "last_run_at": record.get("last_auto_run_at"),
+        }
+    user_db.upsert_user({"clerk_user_id": clerk_user_id, **updates})
+    record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+    return {
+        "enabled": bool(record.get("automation_enabled")),
+        "occupation": record.get("occupation"),
+        "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
+        "last_run_at": record.get("last_auto_run_at"),
+    }
+
+
+@app.get("/me/automation/logs")
+async def get_automation_logs(req: Request, limit: int = Query(20, ge=1, le=50)):
+    """Get automation run logs for the current user."""
+    clerk_user_id = _require_clerk_user_id(req)
+    if automation_logs_store is None:
+        return {"logs": [], "total": 0}
+    logs = automation_logs_store.get_logs_for_user(clerk_user_id, limit=limit)
+    return {"logs": logs, "total": len(logs)}
+
+
+def _run_automation_once() -> dict:
+    """Run auto-create for all users with automation enabled and occupation. Returns summary."""
+    if user_db is None:
+        return {"users_processed": 0, "posts_created": 0, "errors": [{"clerk_user_id": "", "error": "User DB unavailable"}]}
+    try:
+        users = user_db.list_users_with_automation()
+    except Exception as e:
+        return {"users_processed": 0, "posts_created": 0, "errors": [{"clerk_user_id": "", "error": str(e)}]}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    posts_created = 0
+    errors = []
+    for u in users:
+        clerk_user_id = u.get("clerk_user_id")
+        occupation = (u.get("occupation") or "").strip()
+        if not clerk_user_id or not occupation:
+            continue
+        last_run = u.get("last_auto_run_at")
+        freq = (u.get("automation_frequency") or "daily").strip() or "daily"
+        if last_run and freq == "daily":
+            try:
+                last_dt = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
+                if (datetime.now(timezone.utc) - last_dt).total_seconds() < 23 * 3600:
+                    continue
+            except Exception:
+                pass
+        try:
+            trend_payload = _fetch_trending_topics(occupation, occupation)
+            topics = suggest_topics(
+                occupation=occupation,
+                trending_topics=trend_payload.get("items") or None,
+                limit=3,
+                openai_api_key=_get_openai_key_for_user(clerk_user_id),
+            )
+            topic = (topics[0] if topics else None) or f"Trending in {occupation}"
+            content = generate_linkedin_post(
+                topic=topic,
+                profile_context=None,
+                trending_topics=trend_payload.get("items") or None,
+                user_niche=occupation,
+                openai_api_key=_get_openai_key_for_user(clerk_user_id),
+            )
+            _require_db().create_post(
+                content=content,
+                topic=topic,
+                status="draft",
+                clerk_user_id=clerk_user_id,
+            )
+            posts_created += 1
+            user_db.upsert_user({"clerk_user_id": clerk_user_id, "last_auto_run_at": now_iso})
+            if automation_logs_store:
+                automation_logs_store.append_log(clerk_user_id, now_iso, "success", 1, None)
+        except Exception as exc:
+            err_msg = str(exc)
+            errors.append({"clerk_user_id": clerk_user_id, "error": err_msg})
+            if automation_logs_store:
+                automation_logs_store.append_log(clerk_user_id, now_iso, "failed", 0, err_msg)
+    return {"users_processed": len(users), "posts_created": posts_created, "errors": errors}
+
+
+@app.post("/cron/run-automation")
+@app.get("/cron/run-automation")
+async def cron_run_automation():
+    """Cron-triggered endpoint: run auto-create for all users with automation enabled. No auth."""
+    if user_db is None:
+        raise HTTPException(status_code=503, detail="User DB not available")
+    result = await run_in_threadpool(_run_automation_once)
+    return result
 
 
 @app.post("/generate/image")
@@ -1046,18 +1193,15 @@ async def _start_scheduler() -> None:
 
 
 @app.get("/posts")
-async def list_posts(status: Optional[str] = Query(None, description="Filter by status")):
+async def list_posts(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    clerk_user_id: Optional[str] = Query(None, description="Filter by user (for multi-tenant)"),
+):
     """
-    List all posts, optionally filtered by status.
-    
-    Args:
-        status: Optional status filter (draft, published, scheduled)
-        
-    Returns:
-        List of posts
+    List all posts, optionally filtered by status and/or clerk_user_id.
     """
     try:
-        posts = _require_db().get_all_posts(status=status)
+        posts = _require_db().get_all_posts(status=status, clerk_user_id=clerk_user_id)
         return {
             "success": True,
             "count": len(posts),

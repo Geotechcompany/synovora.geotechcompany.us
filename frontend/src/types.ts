@@ -144,3 +144,22 @@ export interface ClerkUserSyncPayload {
   created_at?: string;
 }
 
+export interface AutomationSetting {
+  enabled: boolean;
+  occupation: string | null;
+  frequency: 'daily' | 'weekly';
+  last_run_at: string | null;
+}
+
+export interface AutomationLogEntry {
+  run_at: string;
+  status: string;
+  posts_created: number;
+  error_message: string | null;
+}
+
+export interface AutomationLogsResponse {
+  logs: AutomationLogEntry[];
+  total: number;
+}
+

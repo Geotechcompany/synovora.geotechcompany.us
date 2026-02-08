@@ -69,6 +69,9 @@ class FilePostDatabase:
         linkedin_post_id: Optional[str] = None,
         image_base64: Optional[str] = None,
         image_mime_type: Optional[str] = None,
+        image_url: Optional[str] = None,
+        image_storage_path: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
     ) -> Dict:
         now = datetime.now().isoformat()
         with _FILE_LOCK:
@@ -85,7 +88,9 @@ class FilePostDatabase:
                 "updated_at": now,
                 "image_base64": image_base64,
                 "image_mime_type": image_mime_type,
-                # Keep parity with Mongo responses that include _id
+                "image_url": image_url,
+                "image_storage_path": image_storage_path,
+                "clerk_user_id": clerk_user_id,
                 "_id": f"file:{post_id}",
             }
             posts.insert(0, post)
@@ -100,11 +105,13 @@ class FilePostDatabase:
                     return post
         return None
 
-    def get_all_posts(self, status: Optional[str] = None) -> List[Dict]:
+    def get_all_posts(self, status: Optional[str] = None, clerk_user_id: Optional[str] = None) -> List[Dict]:
         with _FILE_LOCK:
             posts = self._load_posts()
             if status:
-                return [p for p in posts if p.get("status") == status]
+                posts = [p for p in posts if p.get("status") == status]
+            if clerk_user_id is not None:
+                posts = [p for p in posts if p.get("clerk_user_id") == clerk_user_id]
             return posts
 
     def update_post(self, post_id: int, **kwargs) -> Optional[Dict]:
@@ -181,6 +188,15 @@ class FileUserDatabase:
             users = self._load_users()
             return users.get(clerk_user_id)
 
+    def list_users_with_automation(self) -> List[Dict[str, Any]]:
+        with _FILE_LOCK:
+            users = self._load_users()
+            out = []
+            for u in users.values():
+                if u.get("automation_enabled") and (u.get("occupation") or "").strip():
+                    out.append(dict(u))
+            return out
+
     def close(self) -> None:
         return None
 
@@ -223,6 +239,7 @@ class MongoPostDatabase:
         image_mime_type: Optional[str] = None,
         image_url: Optional[str] = None,
         image_storage_path: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
     ) -> Dict:
         now = _now_iso()
         post_id = self._next_id()
@@ -236,12 +253,12 @@ class MongoPostDatabase:
             "image_mime_type": image_mime_type,
             "image_url": image_url,
             "image_storage_path": image_storage_path,
+            "clerk_user_id": clerk_user_id,
             "created_at": now,
             "updated_at": now,
             "published_at": None,
         }
         self.collection.insert_one(doc)
-        # Return a JSON-serializable copy (insert_one may add _id: ObjectId in-place)
         return {k: v for k, v in doc.items() if k != "_id"}
 
     def get_post(self, post_id: int) -> Optional[Dict]:
@@ -250,8 +267,10 @@ class MongoPostDatabase:
             doc = {k: v for k, v in doc.items() if k != "_id"}
         return doc
 
-    def get_all_posts(self, status: Optional[str] = None) -> List[Dict]:
+    def get_all_posts(self, status: Optional[str] = None, clerk_user_id: Optional[str] = None) -> List[Dict]:
         q = {} if not status else {"status": status}
+        if clerk_user_id is not None:
+            q["clerk_user_id"] = clerk_user_id
         cursor = self.collection.find(q).sort("id", -1)
         return [{k: v for k, v in d.items() if k != "_id"} for d in cursor]
 
@@ -319,6 +338,12 @@ class MongoUserDatabase:
             doc = {k: v for k, v in doc.items() if k != "_id"}
         return doc
 
+    def list_users_with_automation(self) -> List[Dict[str, Any]]:
+        cursor = self.collection.find(
+            {"automation_enabled": True, "occupation": {"$exists": True, "$ne": None, "$nin": [""]}}
+        )
+        return [{k: v for k, v in d.items() if k != "_id"} for d in cursor]
+
     def close(self) -> None:
         return None
 
@@ -377,6 +402,7 @@ class PostDatabase:
         image_mime_type: Optional[str] = None,
         image_url: Optional[str] = None,
         image_storage_path: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
     ) -> Dict:
         now = _now_iso()
         payload = {
@@ -388,6 +414,7 @@ class PostDatabase:
             "image_mime_type": image_mime_type,
             "image_url": image_url,
             "image_storage_path": image_storage_path,
+            "clerk_user_id": clerk_user_id,
             "created_at": now,
             "updated_at": now,
             "published_at": None,
@@ -407,10 +434,12 @@ class PostDatabase:
         )
         return result.data[0] if result.data else None
 
-    def get_all_posts(self, status: Optional[str] = None) -> List[Dict]:
+    def get_all_posts(self, status: Optional[str] = None, clerk_user_id: Optional[str] = None) -> List[Dict]:
         query = self.client.table(self.table).select("*")
         if status:
             query = query.eq("status", status)
+        if clerk_user_id is not None:
+            query = query.eq("clerk_user_id", clerk_user_id)
         result = query.order("id", desc=True).execute()
         return result.data or []
 
@@ -481,5 +510,160 @@ class UserDatabase:
         )
         return result.data[0] if result.data else None
 
+    def list_users_with_automation(self) -> List[Dict[str, Any]]:
+        result = (
+            self.client.table(self.table)
+            .select("*")
+            .eq("automation_enabled", True)
+            .not_.is_("occupation", "null")
+            .execute()
+        )
+        out = []
+        for row in result.data or []:
+            if (row.get("occupation") or "").strip():
+                out.append(row)
+        return out
+
     def close(self) -> None:
         return None
+
+
+# --- Automation run logs (Mongo creates collection on first insert) ---
+
+class MongoAutomationLogStore:
+    """MongoDB store for automation run logs. Collection is created on first insert."""
+
+    def __init__(self, db_name: Optional[str] = None, collection_name: Optional[str] = None):
+        client = _get_mongo_client()
+        self.db = client.get_default_database() if not db_name else client[db_name]
+        self.collection = self.db[collection_name or "automation_logs"]
+        try:
+            self.collection.create_index([("clerk_user_id", 1), ("run_at", -1)])
+        except Exception:
+            pass
+
+    def append_log(
+        self,
+        clerk_user_id: str,
+        run_at: str,
+        status: str,
+        posts_created: int = 0,
+        error_message: Optional[str] = None,
+    ) -> None:
+        doc = {
+            "clerk_user_id": clerk_user_id,
+            "run_at": run_at,
+            "status": status,
+            "posts_created": posts_created,
+            "error_message": error_message,
+        }
+        self.collection.insert_one(doc)
+
+    def get_logs_for_user(self, clerk_user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        cursor = (
+            self.collection.find({"clerk_user_id": clerk_user_id})
+            .sort("run_at", -1)
+            .limit(limit)
+        )
+        out = []
+        for d in cursor:
+            out.append({
+                "run_at": d.get("run_at"),
+                "status": d.get("status"),
+                "posts_created": d.get("posts_created", 0),
+                "error_message": d.get("error_message"),
+            })
+        return out
+
+
+class FileAutomationLogStore:
+    """File-backed automation run logs (JSON array)."""
+
+    def __init__(self, file_path: Optional[str] = None):
+        self.path = Path(file_path) if file_path else (_backend_root() / "data" / "automation_logs.json")
+
+    def _load(self) -> List[Dict[str, Any]]:
+        data = _read_json_file(self.path, default=[])
+        return data if isinstance(data, list) else []
+
+    def _save(self, data: List[Dict[str, Any]]) -> None:
+        _atomic_write_json(self.path, data[-500:])  # keep last 500
+
+    def append_log(
+        self,
+        clerk_user_id: str,
+        run_at: str,
+        status: str,
+        posts_created: int = 0,
+        error_message: Optional[str] = None,
+    ) -> None:
+        with _FILE_LOCK:
+            logs = self._load()
+            logs.append({
+                "clerk_user_id": clerk_user_id,
+                "run_at": run_at,
+                "status": status,
+                "posts_created": posts_created,
+                "error_message": error_message,
+            })
+            self._save(logs)
+
+    def get_logs_for_user(self, clerk_user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        with _FILE_LOCK:
+            logs = self._load()
+            user_logs = [e for e in logs if e.get("clerk_user_id") == clerk_user_id]
+            user_logs.sort(key=lambda e: e.get("run_at") or "", reverse=True)
+            out = user_logs[:limit]
+            return [
+                {
+                    "run_at": e.get("run_at"),
+                    "status": e.get("status"),
+                    "posts_created": e.get("posts_created", 0),
+                    "error_message": e.get("error_message"),
+                }
+                for e in out
+            ]
+
+
+class SupabaseAutomationLogStore:
+    """Supabase table automation_logs for run history. Table must exist (see schema.sql)."""
+
+    def __init__(self, table_name: Optional[str] = None):
+        self.client = _get_supabase_client()
+        self.table = table_name or "automation_logs"
+
+    def append_log(
+        self,
+        clerk_user_id: str,
+        run_at: str,
+        status: str,
+        posts_created: int = 0,
+        error_message: Optional[str] = None,
+    ) -> None:
+        payload = {
+            "clerk_user_id": clerk_user_id,
+            "run_at": run_at,
+            "status": status,
+            "posts_created": posts_created,
+            "error_message": error_message,
+        }
+        self.client.table(self.table).insert(payload).execute()
+
+    def get_logs_for_user(self, clerk_user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        result = (
+            self.client.table(self.table)
+            .select("run_at,status,posts_created,error_message")
+            .eq("clerk_user_id", clerk_user_id)
+            .order("run_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [
+            {
+                "run_at": r.get("run_at"),
+                "status": r.get("status"),
+                "posts_created": r.get("posts_created", 0),
+                "error_message": r.get("error_message"),
+            }
+            for r in (result.data or [])
+        ]
