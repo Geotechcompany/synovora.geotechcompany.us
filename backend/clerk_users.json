@@ -1,0 +1,30 @@
+{
+  "user_35tNHATzFQ7aYFMWHdPHvMFO313": {
+    "clerk_user_id": "user_35tNHATzFQ7aYFMWHdPHvMFO313",
+    "email": "arthurbreck417@gmail.com",
+    "first_name": "Geoffrey",
+    "last_name": "Audia",
+    "username": "geotech1",
+    "image_url": "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zNXROSDhzRERZY3prRUFYTWxwOFN0U1lDZ3IifQ",
+    "last_sign_in_at": "2026-02-08T22:09:41.403Z",
+    "created_at": "2025-11-23T19:15:17.364Z",
+    "updated_at": "2026-02-09T01:10:05.331579",
+    "_id": "file:user_35tNHATzFQ7aYFMWHdPHvMFO313",
+    "linkedin_connected": true,
+    "linkedin_profile": {
+      "sub": "U84jSWVn8R",
+      "email_verified": true,
+      "name": "Geoffrey Audia",
+      "locale": {
+        "country": "US",
+        "language": "en"
+      },
+      "given_name": "Geoffrey",
+      "family_name": "Audia",
+      "email": "geoffreyaudia9@gmail.com",
+      "picture": "https://media.licdn.com/dms/image/v2/D4D03AQEEW65XC_ojrg/profile-displayphoto-scale_100_100/B4DZmcKFYAHwAc-/0/1759261514300?e=1772064000&v=beta&t=NaPiLnMA3zWPTxRjYC-Axac08W1z7uOmnsEF77XUpFM"
+    },
+    "linkedin_last_checked_at": "2026-02-08T22:10:02.419895+00:00",
+    "linkedin_status_message": "Connected"
+  }
+}

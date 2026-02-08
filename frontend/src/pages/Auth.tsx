@@ -137,55 +137,53 @@ const AuthPage = () => {
               }}
             />
           </div>
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 md:p-8">
-            {view === 'signin' ? (
-              <SignIn
-                appearance={{
-                  elements: {
-                    footer: 'hidden',
-                    headerTitle: 'hidden',
-                    card: 'border-0 shadow-none rounded-2xl',
-                    rootBox: 'w-full',
-                    formButtonPrimary: 'bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold py-2.5 rounded-lg transition shadow-md',
-                    formFieldInput: 'text-slate-900 border-slate-200 focus:border-slate-900 focus:ring-slate-900',
-                    formFieldLabel: 'text-slate-700 font-medium text-sm',
-                    socialButtonsBlockButton: 'border-slate-200 hover:bg-slate-50 text-slate-700 font-medium',
-                    formHeaderTitle: 'hidden',
-                    formHeaderSubtitle: 'hidden',
-                    identityPreviewText: 'text-slate-600',
-                    identityPreviewEditButton: 'text-slate-900 hover:bg-slate-100',
-                  },
-                }}
-                routing="virtual"
-                signUpUrl="/auth"
-                afterSignInUrl="/"
-                afterSignUpUrl="/"
-              />
-            ) : (
-              <SignUp
-                appearance={{
-                  elements: {
-                    footer: 'hidden',
-                    headerTitle: 'hidden',
-                    card: 'border-0 shadow-none rounded-2xl',
-                    rootBox: 'w-full',
-                    formButtonPrimary: 'bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold py-2.5 rounded-lg transition shadow-md',
-                    formFieldInput: 'text-slate-900 border-slate-200 focus:border-slate-900 focus:ring-slate-900',
-                    formFieldLabel: 'text-slate-700 font-medium text-sm',
-                    socialButtonsBlockButton: 'border-slate-200 hover:bg-slate-50 text-slate-700 font-medium',
-                    formHeaderTitle: 'hidden',
-                    formHeaderSubtitle: 'hidden',
-                    identityPreviewText: 'text-slate-600',
-                    identityPreviewEditButton: 'text-slate-900 hover:bg-slate-100',
-                  },
-                }}
-                routing="virtual"
-                signInUrl="/auth"
-                afterSignInUrl="/"
-                afterSignUpUrl="/"
-              />
-            )}
-          </div>
+          {view === 'signin' ? (
+            <SignIn
+              appearance={{
+                elements: {
+                  footer: 'hidden',
+                  headerTitle: 'hidden',
+                  card: 'bg-white border border-slate-200 shadow-xl rounded-2xl',
+                  rootBox: 'w-full',
+                  formButtonPrimary: 'bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold py-2.5 rounded-lg transition shadow-md',
+                  formFieldInput: 'text-slate-900 border-slate-200 focus:border-slate-900 focus:ring-slate-900',
+                  formFieldLabel: 'text-slate-700 font-medium text-sm',
+                  socialButtonsBlockButton: 'border-slate-200 hover:bg-slate-50 text-slate-700 font-medium',
+                  formHeaderTitle: 'hidden',
+                  formHeaderSubtitle: 'hidden',
+                  identityPreviewText: 'text-slate-600',
+                  identityPreviewEditButton: 'text-slate-900 hover:bg-slate-100',
+                },
+              }}
+              routing="virtual"
+              signUpUrl="/auth"
+              afterSignInUrl="/"
+              afterSignUpUrl="/"
+            />
+          ) : (
+            <SignUp
+              appearance={{
+                elements: {
+                  footer: 'hidden',
+                  headerTitle: 'hidden',
+                  card: 'bg-white border border-slate-200 shadow-xl rounded-2xl',
+                  rootBox: 'w-full',
+                  formButtonPrimary: 'bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold py-2.5 rounded-lg transition shadow-md',
+                  formFieldInput: 'text-slate-900 border-slate-200 focus:border-slate-900 focus:ring-slate-900',
+                  formFieldLabel: 'text-slate-700 font-medium text-sm',
+                  socialButtonsBlockButton: 'border-slate-200 hover:bg-slate-50 text-slate-700 font-medium',
+                  formHeaderTitle: 'hidden',
+                  formHeaderSubtitle: 'hidden',
+                  identityPreviewText: 'text-slate-600',
+                  identityPreviewEditButton: 'text-slate-900 hover:bg-slate-100',
+                },
+              }}
+              routing="virtual"
+              signInUrl="/auth"
+              afterSignInUrl="/"
+              afterSignUpUrl="/"
+            />
+          )}
         </div>
       </div>
     </div>

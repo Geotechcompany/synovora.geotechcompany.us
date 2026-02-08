@@ -5,6 +5,8 @@ import { ClerkProvider } from '@clerk/clerk-react';
 
 import './index.css';
 import App from './App.tsx';
+import { ThemeProvider } from './contexts/theme-context';
+import { ModalProvider } from './components/modal-context';
 
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -16,10 +18,14 @@ if (!clerkKey) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/auth">
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </ClerkProvider>
+    <ThemeProvider>
+      <ClerkProvider publishableKey={clerkKey} afterSignOutUrl="/auth">
+        <BrowserRouter>
+          <ModalProvider>
+            <App />
+          </ModalProvider>
+        </BrowserRouter>
+      </ClerkProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

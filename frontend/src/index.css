@@ -19,6 +19,10 @@ body {
   background: linear-gradient(135deg, #f1f5f9 0%, #eef2ff 50%, #f8fafc 100%);
 }
 
+.dark body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+}
+
 #root {
   min-height: 100vh;
 }

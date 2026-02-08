@@ -1,6 +1,6 @@
-"""Database module for storing posts and users using Supabase (Postgres).
+"""Database module for storing posts and users.
 
-This app historically used MongoDB; it now uses Supabase via PostgREST.
+Supports MongoDB (primary), Supabase (Postgres), and file-based fallback.
 """
 
 import os
@@ -187,6 +187,153 @@ class FileUserDatabase:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_mongo_client():
+    """Get MongoDB client. Uses MONGO_DB_URL or MONGODB_URI from env."""
+    uri = (os.getenv("MONGO_DB_URL") or os.getenv("MONGODB_URI") or "").strip()
+    if not uri:
+        raise ValueError("MongoDB is not configured. Set MONGO_DB_URL or MONGODB_URI in .env")
+    from pymongo import MongoClient
+    client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+    client.admin.command("ping")
+    return client
+
+
+class MongoPostDatabase:
+    """MongoDB-backed database for storing posts."""
+
+    def __init__(self, db_name: Optional[str] = None, collection_name: Optional[str] = None):
+        client = _get_mongo_client()
+        self.db = client.get_default_database() if not db_name else client[db_name]
+        self.collection = self.db[collection_name or "posts"]
+
+    def _next_id(self) -> int:
+        with _FILE_LOCK:
+            doc = self.collection.find_one(sort=[("id", -1)], projection={"id": 1})
+            return (doc["id"] + 1) if doc and doc.get("id") is not None else 1
+
+    def create_post(
+        self,
+        content: str,
+        topic: str,
+        status: str = "draft",
+        linkedin_post_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
+        image_mime_type: Optional[str] = None,
+        image_url: Optional[str] = None,
+        image_storage_path: Optional[str] = None,
+    ) -> Dict:
+        now = _now_iso()
+        post_id = self._next_id()
+        doc = {
+            "id": post_id,
+            "content": content,
+            "topic": topic,
+            "status": status,
+            "linkedin_post_id": linkedin_post_id,
+            "image_base64": image_base64,
+            "image_mime_type": image_mime_type,
+            "image_url": image_url,
+            "image_storage_path": image_storage_path,
+            "created_at": now,
+            "updated_at": now,
+            "published_at": None,
+        }
+        self.collection.insert_one(doc)
+        # Return a JSON-serializable copy (insert_one may add _id: ObjectId in-place)
+        return {k: v for k, v in doc.items() if k != "_id"}
+
+    def get_post(self, post_id: int) -> Optional[Dict]:
+        doc = self.collection.find_one({"id": post_id})
+        if doc and "_id" in doc:
+            doc = {k: v for k, v in doc.items() if k != "_id"}
+        return doc
+
+    def get_all_posts(self, status: Optional[str] = None) -> List[Dict]:
+        q = {} if not status else {"status": status}
+        cursor = self.collection.find(q).sort("id", -1)
+        return [{k: v for k, v in d.items() if k != "_id"} for d in cursor]
+
+    def update_post(self, post_id: int, **kwargs) -> Optional[Dict]:
+        payload = {k: v for k, v in kwargs.items() if v is not None}
+        payload["updated_at"] = _now_iso()
+        from pymongo import ReturnDocument
+        result = self.collection.find_one_and_update(
+            {"id": post_id},
+            {"$set": payload},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not result:
+            return None
+        return {k: v for k, v in result.items() if k != "_id"}
+
+    def delete_post(self, post_id: int) -> bool:
+        result = self.collection.delete_one({"id": post_id})
+        return result.deleted_count > 0
+
+    def mark_as_published(self, post_id: int, linkedin_post_id: str) -> Optional[Dict]:
+        return self.update_post(
+            post_id,
+            status="published",
+            linkedin_post_id=linkedin_post_id,
+            published_at=_now_iso(),
+        )
+
+
+class MongoUserDatabase:
+    """MongoDB-backed storage for Clerk users."""
+
+    def __init__(self, db_name: Optional[str] = None, collection_name: Optional[str] = None):
+        client = _get_mongo_client()
+        self.db = client.get_default_database() if not db_name else client[db_name]
+        self.collection = self.db[collection_name or "clerk_users"]
+
+    def upsert_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        clerk_user_id = data.get("clerk_user_id")
+        if not clerk_user_id:
+            raise ValueError("clerk_user_id is required")
+        existing = self.get_user_by_clerk_id(clerk_user_id)
+        created_at = (
+            (existing or {}).get("created_at")
+            or data.get("created_at")
+            or _now_iso()
+        )
+        sanitized = {k: v for k, v in data.items() if v is not None}
+        payload = {
+            **sanitized,
+            "clerk_user_id": clerk_user_id,
+            "created_at": created_at,
+            "updated_at": _now_iso(),
+        }
+        self.collection.update_one(
+            {"clerk_user_id": clerk_user_id},
+            {"$set": payload},
+            upsert=True,
+        )
+        return self.get_user_by_clerk_id(clerk_user_id) or payload
+
+    def get_user_by_clerk_id(self, clerk_user_id: str) -> Optional[Dict[str, Any]]:
+        doc = self.collection.find_one({"clerk_user_id": clerk_user_id})
+        if doc and "_id" in doc:
+            doc = {k: v for k, v in doc.items() if k != "_id"}
+        return doc
+
+    def close(self) -> None:
+        return None
+
+
+def get_supabase_storage_client():
+    """
+    Return a Supabase client for storage only (no table connection test).
+    Use when the main DB is Mongo/file but you still want to upload images to Supabase Storage.
+    Returns None if Supabase env vars are not set.
+    """
+    supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
+    supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    if not supabase_url or not supabase_key:
+        return None
+    return create_client(supabase_url, supabase_key)
 
 
 def _get_supabase_client():

@@ -49,10 +49,10 @@ export const Toast = ({
   };
 
   const styles = {
-    success: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    error: 'bg-rose-50 border-rose-200 text-rose-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800',
-    warning: 'bg-amber-50 border-amber-200 text-amber-800',
+    success: 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200',
+    error: 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200',
+    info: 'bg-blue-50 dark:bg-blue-950/80 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200',
+    warning: 'bg-amber-50 dark:bg-amber-950/80 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200',
   };
 
   const Icon = icons[type];
@@ -97,7 +97,7 @@ interface ToastContainerProps {
 
 export const ToastContainer = ({ toasts, onRemove }: ToastContainerProps) => {
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
+    <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none [&>*]:pointer-events-auto">
       {toasts.map((toast) => (
         <Toast
           key={toast.id}
@@ -112,6 +112,7 @@ export const ToastContainer = ({ toasts, onRemove }: ToastContainerProps) => {
     </div>
   );
 };
+
 
 
 

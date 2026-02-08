@@ -24,6 +24,8 @@ import { BRAND } from '../config/brand';
 import { Skeleton } from '../components/skeleton';
 import { ActivityAreaChart } from '../components/charts/activity-area';
 import { StatusDonutChart } from '../components/charts/status-donut';
+import { ThemeToggle } from '../components/theme-toggle';
+import { useModal } from '../components/modal-context';
 import {
   deletePost,
   emailPost,
@@ -53,6 +55,7 @@ const DashboardPage = () => {
   const { signOut } = useClerk();
   const { user } = useUser();
   const { getToken } = useAuth();
+  const { showModal, showToast, showInput } = useModal();
 
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [posts, setPosts] = useState<PostRecord[]>([]);
@@ -268,7 +271,7 @@ const DashboardPage = () => {
         }
       }
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -277,7 +280,7 @@ const DashboardPage = () => {
   const handleSuggestTopics = async () => {
     const occupationClean = occupation.trim();
     if (!occupationClean) {
-      alert('Please enter your occupation / work field first.');
+      showToast('Please enter your occupation / work field first.', 'warning');
       return;
     }
 
@@ -304,18 +307,25 @@ const DashboardPage = () => {
 
   const handlePublish = async () => {
     if (!currentPost) return;
-    if (!confirm('Ready to publish this to LinkedIn?')) return;
+    const confirmed = await showModal({
+      title: 'Publish to LinkedIn',
+      message: 'Ready to publish this to LinkedIn?',
+      confirmText: 'Publish',
+      cancelText: 'Cancel',
+      onConfirm: () => {},
+    });
+    if (!confirmed) return;
     setLoading(true);
     setLoadingTitle('Publishing');
     setLoadingText('Sending to LinkedIn...');
     try {
       const result = await publishPost(currentPost.id);
-      alert(result.message);
+      showToast(result.message, 'success');
       await loadPosts(filter ?? undefined);
       setCurrentPost(null);
       setImagePreview(null);
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -327,11 +337,11 @@ const DashboardPage = () => {
 
     const scheduled = new Date(scheduleFor);
     if (Number.isNaN(scheduled.getTime())) {
-      alert('Invalid schedule time.');
+      showToast('Invalid schedule time.', 'error');
       return;
     }
     if (scheduled.getTime() <= Date.now()) {
-      alert('Schedule time must be in the future.');
+      showToast('Schedule time must be in the future.', 'warning');
       return;
     }
 
@@ -344,12 +354,12 @@ const DashboardPage = () => {
         visibility: scheduleVisibility,
       });
       if (result.success) {
-        alert('Post scheduled.');
+        showToast('Post scheduled.', 'success');
         await loadPosts(filter ?? undefined);
         setCurrentPost(result.post);
       }
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -364,10 +374,10 @@ const DashboardPage = () => {
       const result = await updatePost(currentPost.id, { status: 'draft' });
       if (result.success) {
         await loadPosts(filter ?? undefined);
-        alert('Draft saved.');
+        showToast('Draft saved.', 'success');
       }
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -376,7 +386,13 @@ const DashboardPage = () => {
   const handleEmailPost = async () => {
     if (!currentPost) return;
     const defaultEmail = user?.primaryEmailAddress?.emailAddress ?? '';
-    const recipient = prompt('Send this draft to which email address?', defaultEmail);
+    const recipient = await showInput({
+      title: 'Send draft by email',
+      label: 'Email address',
+      placeholder: 'email@example.com',
+      defaultValue: defaultEmail,
+      type: 'email',
+    });
     if (!recipient) return;
 
     setLoading(true);
@@ -389,9 +405,9 @@ const DashboardPage = () => {
         include_image: Boolean(currentPost.image_url || currentPost.image_base64),
       };
       const result = await emailPost(currentPost.id, payload);
-      alert(result.message);
+      showToast(result.message, 'success');
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -399,17 +415,23 @@ const DashboardPage = () => {
 
   const handleEditContent = async () => {
     if (!currentPost) return;
-    const updated = prompt('Edit your post content:', currentPost.content);
-    if (updated !== null) {
+    const updated = await showInput({
+      title: 'Edit post content',
+      label: 'Content',
+      defaultValue: currentPost.content,
+      placeholder: 'Your post content...',
+    });
+    if (updated) {
       try {
         const result = await updatePost(currentPost.id, { content: updated });
         if (result.success) {
           setCurrentPost(result.post);
           setWordCount(updated.split(/\s+/).length);
           await loadPosts(filter ?? undefined);
+          showToast('Post updated.', 'success');
         }
       } catch (error) {
-        alert((error as Error).message);
+        showToast((error as Error).message, 'error');
       }
     }
   };
@@ -447,14 +469,23 @@ const DashboardPage = () => {
   };
 
   const handleDeletePost = async (postId: number) => {
-    if (!confirm('Are you sure you want to delete this post?')) return;
+    const confirmed = await showModal({
+      title: 'Delete post',
+      message: 'Are you sure you want to delete this post? This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      onConfirm: () => {},
+    });
+    if (!confirmed) return;
     try {
       const result = await deletePost(postId);
       if (result.success) {
         await loadPosts(filter ?? undefined);
+        showToast('Post deleted.', 'success');
       }
     } catch (error) {
-      alert((error as Error).message);
+      showToast((error as Error).message, 'error');
     }
   };
 
@@ -472,7 +503,7 @@ const DashboardPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 md:flex">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 md:flex">
       {mobileNavOpen && (
         <div
           className="fixed inset-0 bg-slate-900/40 z-20 md:hidden"
@@ -481,7 +512,7 @@ const DashboardPage = () => {
       )}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 w-72 md:w-64 bg-white/75 border-r border-slate-200/70 z-30 flex flex-col transition-transform duration-300 backdrop-blur-xl',
+          'fixed inset-y-0 left-0 w-72 md:w-64 bg-white/75 dark:bg-slate-800/75 border-r border-slate-200/70 dark:border-slate-700/70 z-30 flex flex-col transition-transform duration-300 backdrop-blur-xl',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
           'md:translate-x-0 md:static md:flex md:h-screen md:sticky md:top-0'
         )}
@@ -502,7 +533,7 @@ const DashboardPage = () => {
             </div>
             <button
               type="button"
-              className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200/70 bg-white/70 text-slate-600 hover:bg-white transition"
+              className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600 transition"
               onClick={() => setMobileNavOpen(false)}
               aria-label="Close sidebar"
               title="Close"
@@ -518,7 +549,7 @@ const DashboardPage = () => {
             Close
           </button>
 
-          <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400 font-semibold mb-3">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400 dark:text-slate-500 font-semibold mb-3">
             Navigation
           </p>
           <nav className="space-y-1.5">
@@ -532,17 +563,17 @@ const DashboardPage = () => {
                   className={clsx(
                     'group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition relative',
                     isActive
-                      ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
-                      : 'text-slate-700 hover:bg-white/70',
+                      ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-lg shadow-slate-900/20'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-700/50',
                   )}
                 >
                   <span
                     className={clsx(
                       'h-9 w-9 rounded-xl flex items-center justify-center transition',
-                      isActive ? 'bg-white/10' : 'bg-slate-100 group-hover:bg-slate-200',
+                      isActive ? 'bg-white/10' : 'bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600',
                     )}
                   >
-                    <Icon className={clsx('h-4 w-4', isActive ? 'text-white' : 'text-slate-700')} />
+                    <Icon className={clsx('h-4 w-4', isActive ? 'text-white' : 'text-slate-700 dark:text-slate-300')} />
                   </span>
                   <span className="flex-1 text-left">{label}</span>
                   {isActive && (
@@ -555,33 +586,33 @@ const DashboardPage = () => {
             <button
               type="button"
               onClick={() => navigate('/settings')}
-              className="group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-slate-700 hover:bg-white/70 transition"
+              className="group w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-700/50 transition"
             >
-              <span className="h-9 w-9 rounded-xl bg-slate-100 group-hover:bg-slate-200 flex items-center justify-center transition">
+              <span className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 flex items-center justify-center transition">
                 <SettingsIcon className="h-4 w-4" />
               </span>
               <span className="flex-1 text-left">Settings</span>
             </button>
           </nav>
         </div>
-        <div className="relative mt-auto p-6 border-t border-slate-200/60">
-          <div className="ios-card bg-white/70 rounded-2xl p-4">
+        <div className="relative mt-auto p-6 border-t border-slate-200/60 dark:border-slate-700/60">
+          <div className="ios-card bg-white dark:bg-slate-800/70 dark:bg-slate-800/70 rounded-2xl p-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
                 <UserButton appearance={{ elements: { avatarBox: 'w-10 h-10' } }} />
               </div>
               <div className="text-sm min-w-0">
-                <p className="font-semibold text-slate-900 truncate" title={greeting}>
+                <p className="font-semibold text-slate-900 dark:text-slate-100 truncate" title={greeting}>
                   {greeting}
                 </p>
                 <p
                   className={clsx(
                     'text-xs font-semibold',
                     linkedInConnected === null
-                      ? 'text-slate-500'
+                      ? 'text-slate-500 dark:text-slate-400'
                       : linkedInConnected
-                        ? 'text-emerald-600'
-                        : 'text-rose-600',
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400',
                   )}
                 >
                   {linkedInConnected === null
@@ -605,7 +636,7 @@ const DashboardPage = () => {
         </div>
       </aside>
 
-      <main className="min-h-screen relative overflow-y-auto md:flex-1">
+      <main className="min-h-screen relative overflow-y-auto md:flex-1 bg-slate-100 dark:bg-slate-900">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl" />
           <div className="absolute top-40 -left-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
@@ -613,7 +644,7 @@ const DashboardPage = () => {
         </div>
         <div className="relative max-w-6xl mx-auto p-6 pb-28 md:pb-6 space-y-10">
           <div className="md:hidden grid grid-cols-[auto,1fr,auto] items-center gap-3">
-            <button className="p-2 text-slate-600" onClick={() => setMobileNavOpen(true)}>
+            <button className="p-2 text-slate-600 dark:text-slate-300" onClick={() => setMobileNavOpen(true)}>
               <Menu className="h-6 w-6" />
             </button>
             <img
@@ -625,11 +656,12 @@ const DashboardPage = () => {
           </div>
           <div className="flex items-center justify-end gap-4">
             <div className="text-right">
-              <p className="text-xs uppercase text-slate-400 font-semibold tracking-[0.3em]">
+              <p className="text-xs uppercase text-slate-400 dark:text-slate-500 font-semibold tracking-[0.3em]">
                 Welcome back
               </p>
-              <p className="text-sm font-semibold text-slate-600">Hi, {greeting}</p>
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Hi, {greeting}</p>
             </div>
+            <ThemeToggle size="md" />
             <UserButton
               appearance={{
                 elements: { avatarBox: 'w-10 h-10' },
@@ -638,7 +670,7 @@ const DashboardPage = () => {
             <button
               type="button"
               onClick={() => signOut({ redirectUrl: '/auth' })}
-              className="px-4 py-2 text-xs font-semibold border border-slate-200 rounded-full hover:bg-slate-100"
+              className="px-4 py-2 text-xs font-semibold border border-slate-200 dark:border-slate-700 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
             >
               Log out
             </button>
@@ -675,7 +707,7 @@ const DashboardPage = () => {
                     <button
                       type="button"
                       onClick={() => openLinkedInConnect({ clerkUserId: user?.id })}
-                      className="px-6 py-3 rounded-2xl bg-white text-slate-900 font-semibold hover:bg-slate-100 transition"
+                      className="px-6 py-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition"
                     >
                       Connect LinkedIn
                     </button>
@@ -689,8 +721,8 @@ const DashboardPage = () => {
             <section className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
-                  <p className="text-slate-500">Welcome back to your content command center.</p>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Dashboard</h2>
+                  <p className="text-slate-500 dark:text-slate-400">Welcome back to your content command center.</p>
                 </div>
                 <button
                   type="button"
@@ -738,7 +770,7 @@ const DashboardPage = () => {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="ios-card bg-white p-6 rounded-2xl lg:col-span-2">
+                <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl lg:col-span-2">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div>
                       <p className="text-xs uppercase text-slate-400 font-semibold tracking-[0.3em]">
@@ -752,7 +784,7 @@ const DashboardPage = () => {
                   </div>
                   <ActivityAreaChart data={activityData} />
                 </div>
-                <div className="ios-card bg-white p-6 rounded-2xl">
+                <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div>
                       <p className="text-xs uppercase text-slate-400 font-semibold tracking-[0.3em]">
@@ -788,7 +820,7 @@ const DashboardPage = () => {
                 </div>
               ) : profileInsights ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="ios-card bg-white p-6 rounded-2xl space-y-3">
+                  <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl space-y-3">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-xs uppercase text-slate-400 font-semibold tracking-[0.3em]">
@@ -822,7 +854,7 @@ const DashboardPage = () => {
                       Synced {profileInsights.timestamp ? formatDate(profileInsights.timestamp) : 'Not yet'}
                     </p>
                   </div>
-                  <div className="ios-card bg-white p-6 rounded-2xl space-y-4">
+                  <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl space-y-4">
                     <p className="text-sm font-semibold text-slate-900">Audience Metrics</p>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -838,7 +870,7 @@ const DashboardPage = () => {
                       Data sourced via LinkedIn network sizes API.
                     </div>
                   </div>
-                  <div className="ios-card bg-white p-6 rounded-2xl space-y-4">
+                  <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl space-y-4">
                     <p className="text-sm font-semibold text-slate-900">Content Analytics</p>
                     <div className="space-y-2 text-sm text-slate-600">
                       <p>
@@ -891,7 +923,7 @@ const DashboardPage = () => {
                 </div>
               )}
 
-              <div className="ios-card bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <div className="ios-card bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="font-bold text-slate-900">Recent Posts</h3>
                   <button
@@ -944,7 +976,7 @@ const DashboardPage = () => {
                 <p className="text-slate-500">Use AI to craft the perfect LinkedIn post.</p>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <form onSubmit={handleGenerate} className="ios-card bg-white p-6 rounded-2xl space-y-5">
+                <form onSubmit={handleGenerate} className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl space-y-5">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       Your Work Occupation
@@ -1047,7 +1079,7 @@ const DashboardPage = () => {
                   </button>
                 </form>
 
-                <div className="ios-card bg-white p-6 rounded-2xl flex flex-col gap-5">
+                <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl flex flex-col gap-5">
                   {!currentPost ? (
                     <div className="flex flex-col items-center justify-center text-slate-400 py-16">
                       <LayoutDashboard className="w-10 h-10 mb-3" />
@@ -1067,7 +1099,7 @@ const DashboardPage = () => {
                           <p className="font-medium text-slate-500">AI copy &amp; visual</p>
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5 space-y-5">
+                      <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50/60 p-5 space-y-5">
                         <div className="flex gap-3 items-center">
                           <div className="w-12 h-12 bg-slate-200 rounded-full" />
                           <div>
@@ -1219,7 +1251,7 @@ const DashboardPage = () => {
                   posts.map((post) => (
                     <div
                       key={post.id}
-                      className="ios-card bg-white p-5 rounded-2xl hover:shadow-md transition group"
+                      className="ios-card bg-white dark:bg-slate-800 p-5 rounded-2xl hover:shadow-md transition group"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
@@ -1274,7 +1306,7 @@ const DashboardPage = () => {
         </div>
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-4 pb-4">
-          <div className="ios-card bg-white/85 border border-slate-200 rounded-2xl px-2 py-2 backdrop-blur">
+          <div className="ios-card bg-white dark:bg-slate-800/85 border border-slate-200 rounded-2xl px-2 py-2 backdrop-blur">
             <div className="grid grid-cols-4 gap-1">
               {sections.map(({ id, label, icon: Icon }) => (
                 <button
@@ -1304,7 +1336,7 @@ const DashboardPage = () => {
 
         {loading && (
           <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-40 flex items-center justify-center">
-            <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 text-center max-w-sm w-full mx-4">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700 text-center max-w-sm w-full mx-4">
               <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <RefreshCcw className="animate-spin h-8 w-8" />
               </div>
@@ -1333,7 +1365,7 @@ const StatCard = ({
   iconColor: string;
   iconBg: string;
 }) => (
-  <div className="ios-card bg-white p-6 rounded-2xl">
+  <div className="ios-card bg-white dark:bg-slate-800 p-6 rounded-2xl">
     <div className="flex items-center justify-between mb-4">
       <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center', iconBg, iconColor)}>
         <Icon className="w-5 h-5" />

@@ -41,7 +41,15 @@ from jwt import PyJWKClient
 from agents.linkedin_post_agent import generate_linkedin_post
 from agents.profile_intel_agent import analyze_profile_insights
 from agents.topic_suggestion_agent import suggest_topics
-from utils.database import PostDatabase, UserDatabase, FilePostDatabase, FileUserDatabase
+from utils.database import (
+    PostDatabase,
+    UserDatabase,
+    FilePostDatabase,
+    FileUserDatabase,
+    MongoPostDatabase,
+    MongoUserDatabase,
+    get_supabase_storage_client,
+)
 from utils.image_generator import generate_post_image
 from utils.linkedin_api import LinkedInAPI, exchange_code_for_token, get_oauth_url
 from utils.mailer import EmailSender
@@ -67,16 +75,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database (MongoDB)
+# Initialize database: try MongoDB first, then Supabase, then file fallback
 db = None
 user_db = None
 db_init_error = None
+_db_backend = None  # "mongo" | "supabase" | "file"
 
-try:
-    db = PostDatabase()
-    user_db = UserDatabase()
-except Exception as exc:
-    db_init_error = str(exc)
+# 1) Try MongoDB if MONGO_DB_URL or MONGODB_URI is set
+if (os.getenv("MONGO_DB_URL") or os.getenv("MONGODB_URI")):
+    try:
+        db = MongoPostDatabase()
+        user_db = MongoUserDatabase()
+        _db_backend = "mongo"
+        print("\n✅ Using MongoDB for persistence (MONGO_DB_URL / MONGODB_URI).\n")
+    except Exception as exc:
+        db_init_error = str(exc)
+        db = None
+        user_db = None
+
+# 2) Try Supabase if MongoDB didn't succeed and Supabase is configured
+if db is None and (os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY")):
+    try:
+        db = PostDatabase()
+        user_db = UserDatabase()
+        _db_backend = "supabase"
+        print("\n✅ Using Supabase for persistence.\n")
+    except Exception as exc:
+        db_init_error = str(exc)
+        db = None
+        user_db = None
+
+# 3) File fallback if enabled
+if db is None:
     allow_file_fallback = os.getenv("PERSISTENCE_ALLOW_FILE_FALLBACK", "").strip().lower() in {
         "1",
         "true",
@@ -86,13 +116,14 @@ except Exception as exc:
     if allow_file_fallback:
         db = FilePostDatabase(file_path=os.getenv("FILE_POSTS_PATH") or None)
         user_db = FileUserDatabase(file_path=os.getenv("FILE_USERS_PATH") or None)
+        _db_backend = "file"
         print("\n⚠️  Database initialization failed. Falling back to local JSON persistence.")
         print("   Data will be stored on disk (development fallback).")
         print(f"   Details: {db_init_error}\n")
     else:
         print("\n❌ Database initialization failed. The API will start in degraded mode.")
         print("   Endpoints that require persistence will return 503 until this is fixed.")
-        print("   Tip: set PERSISTENCE_ALLOW_FILE_FALLBACK=1 to use local JSON persistence.")
+        print("   Tip: set MONGO_DB_URL or SUPABASE_* in .env, or PERSISTENCE_ALLOW_FILE_FALLBACK=1.")
         print(f"   Details: {db_init_error}\n")
 
 
@@ -278,25 +309,57 @@ def _slugify(value: str) -> str:
     return cleaned or "post"
 
 
-def _upload_image_to_supabase(*, image_bytes: bytes, mime_type: str, topic: str, post_id: Optional[int] = None) -> dict:
-    bucket = _storage_bucket()
+def _upload_image(*, image_bytes: bytes, mime_type: str, topic: str, post_id: Optional[int] = None) -> Optional[dict]:
+    """
+    Upload image to storage. Tries Dropbox first (if DROPBOX_ACCESS_TOKEN set), then Supabase.
+    Returns dict with url and path, or None if both unavailable (caller can use base64).
+    """
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_topic = _slugify(topic)[:60]
     name = f"{safe_topic}-{post_id or 'new'}-{ts}.png"
-    path = f"posts/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{name}"
 
-    storage = _require_db().client.storage.from_(bucket)
-    storage.upload(
-        path,
-        image_bytes,
-        file_options={
-            "content-type": mime_type,
-            "cache-control": "3600",
-            "upsert": "true",
-        },
+    # 1) Dropbox
+    if os.getenv("DROPBOX_ACCESS_TOKEN"):
+        from utils.dropbox_storage import upload_image as dropbox_upload
+        path_slug = f"/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{name}"
+        result = dropbox_upload(image_bytes, mime_type, path_slug)
+        if result:
+            return {"url": result["url"], "path": result["path"], "provider": "dropbox"}
+
+    # 2) Supabase
+    database = _require_db()
+    client = getattr(database, "client", None) or get_supabase_storage_client()
+    if client is not None:
+        bucket = _storage_bucket()
+        path = f"posts/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{name}"
+        try:
+            storage = client.storage.from_(bucket)
+            storage.upload(
+                path,
+                image_bytes,
+                file_options={
+                    "content-type": mime_type,
+                    "cache-control": "3600",
+                    "upsert": "true",
+                },
+            )
+            public_url = storage.get_public_url(path)
+            return {"url": public_url, "path": path, "provider": "supabase"}
+        except Exception:
+            pass
+
+    return None
+
+
+def _upload_image_to_supabase(*, image_bytes: bytes, mime_type: str, topic: str, post_id: Optional[int] = None) -> dict:
+    """Upload image (Dropbox or Supabase). Raises HTTPException 503 if no storage configured."""
+    result = _upload_image(image_bytes=image_bytes, mime_type=mime_type, topic=topic, post_id=post_id)
+    if result is not None:
+        return result
+    raise HTTPException(
+        status_code=503,
+        detail="Image upload requires DROPBOX_ACCESS_TOKEN or Supabase (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY). Or images will be stored as base64 in the post.",
     )
-    public_url = storage.get_public_url(path)
-    return {"bucket": bucket, "path": path, "url": public_url}
 
 
 def _fetch_image_bytes_from_url(url: str) -> tuple[bytes, str]:
@@ -618,18 +681,31 @@ async def generate_post(req: Request, request: PostGenerateRequest):
                 styled_prompt = f"{prompt_base}. Hyper-realistic, cinematic lighting, 4k professional LinkedIn lifestyle photography."
                 image_bytes = generate_post_image(styled_prompt, None)
                 image_mime_type = "image/png"
-                uploaded = _upload_image_to_supabase(
+                uploaded = _upload_image(
                     image_bytes=image_bytes,
                     mime_type=image_mime_type,
                     topic=request.topic,
                 )
-                image_url = uploaded["url"]
-                image_storage_path = uploaded["path"]
-                image_payload = {
-                    "url": image_url,
-                    "storage_path": image_storage_path,
-                    "mime_type": image_mime_type,
-                }
+                if uploaded:
+                    image_url = uploaded["url"]
+                    image_storage_path = uploaded["path"]
+                    image_payload = {
+                        "url": image_url,
+                        "storage_path": image_storage_path,
+                        "mime_type": image_mime_type,
+                        "provider": uploaded.get("provider"),
+                    }
+                else:
+                    # No Dropbox/Supabase: store image as base64 in post
+                    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+                    image_payload = {
+                        "mime_type": image_mime_type,
+                        "data_url": f"data:{image_mime_type};base64,{image_base64}",
+                        "fallback": "Image stored in post (set DROPBOX_ACCESS_TOKEN or Supabase for remote storage).",
+                    }
+                    # Persist in post for display
+                    image_url = None
+                    image_storage_path = None
             except Exception as image_error:
                 image_payload = {
                     "error": str(image_error)
@@ -727,19 +803,28 @@ async def suggest_topics_endpoint(req: Request, request: TopicSuggestRequest):
 async def generate_post_image_endpoint(request: PostImageRequest):
     """
     Generate an illustrative image for a LinkedIn post using OpenAI DALL-E.
+    Uploads to Dropbox (if DROPBOX_ACCESS_TOKEN set) or Supabase; otherwise returns 503.
     """
     try:
         prompt_base = request.prompt or "Professional LinkedIn brand visual"
         styled_prompt = f"{prompt_base}. Hyper-realistic, cinematic lighting, 4k professional LinkedIn lifestyle photography."
         image_bytes = generate_post_image(styled_prompt, request.model)
         mime_type = "image/png"
-        uploaded = _upload_image_to_supabase(image_bytes=image_bytes, mime_type=mime_type, topic=request.prompt)
+        uploaded = _upload_image(image_bytes=image_bytes, mime_type=mime_type, topic=request.prompt)
+        if not uploaded:
+            raise HTTPException(
+                status_code=503,
+                detail="Set DROPBOX_ACCESS_TOKEN or Supabase (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) for image storage.",
+            )
         return {
             "success": True,
             "image_url": uploaded["url"],
             "storage_path": uploaded["path"],
             "mime_type": mime_type,
+            "provider": uploaded.get("provider"),
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -883,10 +968,16 @@ async def _scheduler_loop() -> None:
 
     while True:
         try:
+            # Scheduler requires Supabase (PostDatabase); skip when using file fallback
+            database = _require_db()
+            if not hasattr(database, "client"):
+                await asyncio.sleep(poll_seconds)
+                continue
+
             now_iso = datetime.now(timezone.utc).isoformat()
             # Fetch due scheduled posts
             due = (
-                _require_db().client.table(_require_db().table)
+                database.client.table(database.table)
                 .select("*")
                 .eq("status", "scheduled")
                 .lte("scheduled_for", now_iso)
@@ -902,7 +993,7 @@ async def _scheduler_loop() -> None:
 
                 # Claim the job (avoid duplicate publishing across reload/workers)
                 claimed = (
-                    _require_db().client.table(_require_db().table)
+                    database.client.table(database.table)
                     .update(
                         {
                             "status": "publishing",

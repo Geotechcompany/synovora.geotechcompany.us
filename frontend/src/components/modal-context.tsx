@@ -1,7 +1,9 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { Modal } from './modal';
 import { InputModal } from './input-modal';
-import { ToastContainer, ToastType } from './toast';
+import { ToastContainer } from './toast';
+import type { ToastType } from './toast';
 
 interface Toast {
   id: string;
@@ -52,27 +54,35 @@ export const useModal = () => {
   return context;
 };
 
+const defaultModalState: ModalState = {
+  isOpen: false,
+  title: '',
+  message: '',
+  onConfirm: null,
+};
+
+const defaultInputModalState: InputModalState = {
+  isOpen: false,
+  title: '',
+  label: '',
+  onConfirm: null,
+};
+
 export const ModalProvider = ({ children }: { children: ReactNode }) => {
-  const [modalState, setModalState] = useState<ModalState>({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: null,
-  });
+  const [modalState, setModalState] = useState<ModalState>(defaultModalState);
+  const [inputModalState, setInputModalState] = useState<InputModalState>(defaultInputModalState);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const modalResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const inputResolveRef = useRef<((value: string | null) => void) | null>(null);
 
   const showModal = useCallback(
     (config: Omit<ModalState, 'isOpen'>): Promise<boolean> => {
       return new Promise((resolve) => {
+        modalResolveRef.current = resolve;
         setModalState({
           ...config,
           isOpen: true,
-          onConfirm: () => {
-            if (config.onConfirm) {
-              config.onConfirm();
-            }
-            resolve(true);
-          },
+          onConfirm: config.onConfirm,
         });
       });
     },
@@ -80,7 +90,33 @@ export const ModalProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const closeModal = useCallback(() => {
+    if (modalResolveRef.current) {
+      modalResolveRef.current(false);
+      modalResolveRef.current = null;
+    }
     setModalState((prev) => ({ ...prev, isOpen: false, onConfirm: null }));
+  }, []);
+
+  const showInput = useCallback(
+    (config: Omit<InputModalState, 'isOpen' | 'onConfirm'>): Promise<string | null> => {
+      return new Promise((resolve) => {
+        inputResolveRef.current = resolve;
+        setInputModalState({
+          ...config,
+          isOpen: true,
+          onConfirm: null,
+        });
+      });
+    },
+    [],
+  );
+
+  const closeInputModal = useCallback(() => {
+    if (inputResolveRef.current) {
+      inputResolveRef.current(null);
+      inputResolveRef.current = null;
+    }
+    setInputModalState((prev) => ({ ...prev, isOpen: false, onConfirm: null }));
   }, []);
 
   const showToast = useCallback(
@@ -110,14 +146,24 @@ export const ModalProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const handleModalConfirm = useCallback(() => {
-    if (modalState.onConfirm) {
-      modalState.onConfirm();
+    modalState.onConfirm?.();
+    if (modalResolveRef.current) {
+      modalResolveRef.current(true);
+      modalResolveRef.current = null;
     }
-    closeModal();
-  }, [modalState.onConfirm, closeModal]);
+    setModalState((prev) => ({ ...prev, isOpen: false, onConfirm: null }));
+  }, [modalState.onConfirm]);
+
+  const handleInputConfirm = useCallback((value: string) => {
+    if (inputResolveRef.current) {
+      inputResolveRef.current(value);
+      inputResolveRef.current = null;
+    }
+    setInputModalState((prev) => ({ ...prev, isOpen: false, onConfirm: null }));
+  }, []);
 
   return (
-    <ModalContext.Provider value={{ showModal, showToast }}>
+    <ModalContext.Provider value={{ showModal, showToast, showInput }}>
       {children}
       <Modal
         isOpen={modalState.isOpen}
@@ -128,6 +174,16 @@ export const ModalProvider = ({ children }: { children: ReactNode }) => {
         cancelText={modalState.cancelText}
         onConfirm={handleModalConfirm}
         variant={modalState.variant}
+      />
+      <InputModal
+        isOpen={inputModalState.isOpen}
+        onClose={closeInputModal}
+        title={inputModalState.title}
+        label={inputModalState.label}
+        placeholder={inputModalState.placeholder}
+        defaultValue={inputModalState.defaultValue}
+        type={inputModalState.type}
+        onConfirm={handleInputConfirm}
       />
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </ModalContext.Provider>
