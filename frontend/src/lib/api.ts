@@ -187,7 +187,7 @@ export async function getAutomationSetting(opts: { authToken: string }) {
 }
 
 export async function setAutomationSetting(
-  payload: { enabled?: boolean; frequency?: 'daily' | 'weekly'; occupation?: string },
+  payload: { enabled?: boolean; frequency?: 'daily' | 'weekly'; occupation?: string; auto_publish?: boolean },
   opts: { authToken: string },
 ) {
   return apiFetch<AutomationSetting>(`/me/automation`, {

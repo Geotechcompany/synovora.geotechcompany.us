@@ -149,6 +149,7 @@ export interface AutomationSetting {
   occupation: string | null;
   frequency: 'daily' | 'weekly';
   last_run_at: string | null;
+  auto_publish: boolean;
 }
 
 export interface AutomationLogEntry {

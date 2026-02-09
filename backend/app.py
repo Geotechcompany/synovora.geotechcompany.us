@@ -313,6 +313,7 @@ class AutomationPatchRequest(BaseModel):
     enabled: Optional[bool] = None
     frequency: Optional[str] = None  # "daily" | "weekly"
     occupation: Optional[str] = None
+    auto_publish: Optional[bool] = None  # when true, auto-created posts are published to LinkedIn; when false, saved as draft
 
 
 def _storage_bucket() -> str:
@@ -826,6 +827,7 @@ async def get_automation(req: Request):
         "occupation": record.get("occupation"),
         "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
         "last_run_at": record.get("last_auto_run_at"),
+        "auto_publish": bool(record.get("automation_auto_publish")),
     }
 
 
@@ -849,6 +851,8 @@ async def patch_automation(req: Request, body: AutomationPatchRequest):
         updates["automation_frequency"] = body.frequency
     if body.occupation is not None:
         updates["occupation"] = (body.occupation or "").strip() or None
+    if body.auto_publish is not None:
+        updates["automation_auto_publish"] = body.auto_publish
     if not updates:
         record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
         return {
@@ -856,6 +860,7 @@ async def patch_automation(req: Request, body: AutomationPatchRequest):
             "occupation": record.get("occupation"),
             "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
             "last_run_at": record.get("last_auto_run_at"),
+            "auto_publish": bool(record.get("automation_auto_publish")),
         }
     user_db.upsert_user({"clerk_user_id": clerk_user_id, **updates})
     record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
@@ -864,6 +869,7 @@ async def patch_automation(req: Request, body: AutomationPatchRequest):
         "occupation": record.get("occupation"),
         "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
         "last_run_at": record.get("last_auto_run_at"),
+        "auto_publish": bool(record.get("automation_auto_publish")),
     }
 
 
@@ -902,11 +908,14 @@ def _run_automation_once() -> dict:
             continue
         last_run = u.get("last_auto_run_at")
         freq = (u.get("automation_frequency") or "daily").strip() or "daily"
-        if last_run and freq == "daily":
+        if last_run:
             try:
                 last_dt = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
-                if (datetime.now(timezone.utc) - last_dt).total_seconds() < 23 * 3600:
-                    continue
+                elapsed_seconds = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                if freq == "daily" and elapsed_seconds < 23 * 3600:
+                    continue  # already ran in last 23h, skip to avoid duplicate same-day post
+                if freq == "weekly" and elapsed_seconds < 7 * 24 * 3600:
+                    continue  # already ran in last 7 days, skip until next week
             except Exception:
                 pass
         try:
@@ -925,16 +934,60 @@ def _run_automation_once() -> dict:
                 user_niche=occupation,
                 openai_api_key=_get_openai_key_for_user(clerk_user_id),
             )
-            _require_db().create_post(
+            image_url_auto = None
+            image_base64_auto = None
+            image_mime_auto = None
+            image_storage_path_auto = None
+            if os.getenv("OPENAI_API_KEY") and os.getenv("CRON_AUTOMATION_SKIP_IMAGE", "").strip().lower() not in ("1", "true", "yes", "on"):
+                try:
+                    prompt_base = topic or content[:120]
+                    styled_prompt = f"{prompt_base}. Hyper-realistic, cinematic lighting, 4k professional LinkedIn lifestyle photography."
+                    image_bytes = generate_post_image(styled_prompt, None)
+                    image_mime_auto = "image/png"
+                    uploaded = _upload_image(
+                        image_bytes=image_bytes,
+                        mime_type=image_mime_auto,
+                        topic=topic,
+                    )
+                    if uploaded:
+                        image_url_auto = uploaded["url"]
+                        image_storage_path_auto = uploaded.get("path")
+                    else:
+                        image_base64_auto = base64.b64encode(image_bytes).decode("ascii")
+                except Exception:
+                    pass
+            created = _require_db().create_post(
                 content=content,
                 topic=topic,
                 status="draft",
                 clerk_user_id=clerk_user_id,
+                image_url=image_url_auto,
+                image_base64=image_base64_auto,
+                image_mime_type=image_mime_auto,
+                image_storage_path=image_storage_path_auto,
             )
             posts_created += 1
             user_db.upsert_user({"clerk_user_id": clerk_user_id, "last_auto_run_at": now_iso})
             if automation_logs_store:
                 automation_logs_store.append_log(clerk_user_id, now_iso, "success", 1, None)
+            auto_publish = bool(u.get("automation_auto_publish"))
+            if auto_publish and created and created.get("id") is not None:
+                try:
+                    linkedin_api = LinkedInAPI()
+                    if linkedin_api.validate_token():
+                        full_post = _require_db().get_post(created["id"])
+                        if full_post and full_post.get("status") == "draft":
+                            visibility = (os.getenv("CRON_AUTOMATION_PUBLISH_VISIBILITY") or "PUBLIC").strip().upper()
+                            if visibility not in ("PUBLIC", "CONNECTIONS"):
+                                visibility = "PUBLIC"
+                            result = _publish_post_internal(post=full_post, visibility=visibility)
+                            if result.get("success"):
+                                _require_db().mark_as_published(
+                                    post_id=created["id"],
+                                    linkedin_post_id=result.get("post_id", "unknown"),
+                                )
+                except Exception:
+                    pass
         except Exception as exc:
             err_msg = (str(exc))[:max_error_len]
             if len(errors) < max_errors:

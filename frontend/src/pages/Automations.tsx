@@ -16,6 +16,7 @@ const AutomationsPage = () => {
   const [setting, setSetting] = useState<AutomationSettingType | null>(null);
   const [occupationDraft, setOccupationDraft] = useState('');
   const [frequencyDraft, setFrequencyDraft] = useState<'daily' | 'weekly'>('daily');
+  const [autoPublishDraft, setAutoPublishDraft] = useState(false);
   const [logs, setLogs] = useState<AutomationLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -31,6 +32,7 @@ const AutomationsPage = () => {
       setSetting(data);
       setOccupationDraft(data.occupation ?? '');
       setFrequencyDraft((data.frequency as 'daily' | 'weekly') || 'daily');
+      setAutoPublishDraft(data.auto_publish ?? false);
     } catch (e) {
       showToast((e as Error).message, 'error');
     } finally {
@@ -84,7 +86,7 @@ const AutomationsPage = () => {
       const token = await getToken().catch(() => null);
       if (!token) throw new Error('Not authenticated.');
       const updated = await setAutomationSetting(
-        { occupation: occupationDraft.trim() || undefined, frequency: frequencyDraft },
+        { occupation: occupationDraft.trim() || undefined, frequency: frequencyDraft, auto_publish: autoPublishDraft },
         { authToken: token },
       );
       setSetting(updated);
@@ -208,6 +210,33 @@ const AutomationsPage = () => {
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  When automation creates a post
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoPublishDraft}
+                    onClick={() => setAutoPublishDraft(!autoPublishDraft)}
+                    className={clsx(
+                      'relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/30',
+                      autoPublishDraft ? 'bg-amber-500 dark:bg-amber-600' : 'bg-slate-200 dark:bg-slate-600',
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-1',
+                        autoPublishDraft ? 'translate-x-6 ml-0.5' : 'translate-x-1',
+                      )}
+                    />
+                  </button>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    {autoPublishDraft ? 'Publish to LinkedIn automatically' : 'Save as draft'}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
