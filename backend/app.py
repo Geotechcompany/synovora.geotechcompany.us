@@ -997,14 +997,30 @@ def _run_automation_once() -> dict:
     return {"users_processed": len(users), "posts_created": posts_created, "errors": errors}
 
 
+def _run_automation_safe() -> None:
+    """Wrapper so background run does not raise; logs are written inside _run_automation_once."""
+    try:
+        _run_automation_once()
+    except Exception:
+        pass
+
+
 @app.post("/cron/run-automation")
 @app.get("/cron/run-automation")
 async def cron_run_automation():
-    """Cron-triggered endpoint: run auto-create for all users with automation enabled. No auth."""
+    """
+    Cron-triggered endpoint: run auto-create for users with automation enabled.
+    Returns 202 immediately and runs automation in the background so cron services
+    (e.g. cron-job.org) do not timeout while trends/AI/publish run.
+    """
     if user_db is None:
         raise HTTPException(status_code=503, detail="User DB not available")
-    result = await run_in_threadpool(_run_automation_once)
-    return result
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _run_automation_safe)
+    return JSONResponse(
+        status_code=202,
+        content={"status": "accepted", "message": "Automation started in background."},
+    )
 
 
 @app.post("/generate/image")

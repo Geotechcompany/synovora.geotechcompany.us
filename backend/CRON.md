@@ -11,6 +11,8 @@ Trigger the automation endpoint on a schedule so draft posts are created from tr
 
 Use this URL in [cron-job.org](https://cron-job.org), Render Cron, GitHub Actions, or system cron.
 
+The endpoint **returns 202 Accepted immediately** and runs the automation in the background. This avoids **timeouts** on cron-job.org (and similar services) while trends, AI, and optional publish complete. You do not need to increase the request timeout.
+
 ## cron-job.org setup
 
 1. Go to [cron-job.org](https://cron-job.org) and create or sign in to your account.
