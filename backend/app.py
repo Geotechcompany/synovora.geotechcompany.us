@@ -878,16 +878,23 @@ async def get_automation_logs(req: Request, limit: int = Query(20, ge=1, le=50))
 
 
 def _run_automation_once() -> dict:
-    """Run auto-create for all users with automation enabled and occupation. Returns summary."""
+    """
+    Run auto-create for users with automation enabled. Processes at most
+    CRON_AUTOMATION_MAX_USERS_PER_RUN users per invocation (default 1) to avoid OOM on low-memory instances.
+    """
     if user_db is None:
         return {"users_processed": 0, "posts_created": 0, "errors": [{"clerk_user_id": "", "error": "User DB unavailable"}]}
     try:
         users = user_db.list_users_with_automation()
     except Exception as e:
         return {"users_processed": 0, "posts_created": 0, "errors": [{"clerk_user_id": "", "error": str(e)}]}
+    max_users = max(1, min(10, int(os.getenv("CRON_AUTOMATION_MAX_USERS_PER_RUN", "1"))))
+    users = users[:max_users]
     now_iso = datetime.now(timezone.utc).isoformat()
     posts_created = 0
     errors = []
+    max_errors = 50
+    max_error_len = 200
     for u in users:
         clerk_user_id = u.get("clerk_user_id")
         occupation = (u.get("occupation") or "").strip()
@@ -929,10 +936,11 @@ def _run_automation_once() -> dict:
             if automation_logs_store:
                 automation_logs_store.append_log(clerk_user_id, now_iso, "success", 1, None)
         except Exception as exc:
-            err_msg = str(exc)
-            errors.append({"clerk_user_id": clerk_user_id, "error": err_msg})
+            err_msg = (str(exc))[:max_error_len]
+            if len(errors) < max_errors:
+                errors.append({"clerk_user_id": clerk_user_id, "error": err_msg})
             if automation_logs_store:
-                automation_logs_store.append_log(clerk_user_id, now_iso, "failed", 0, err_msg)
+                automation_logs_store.append_log(clerk_user_id, now_iso, "failed", 0, str(exc)[:500])
     return {"users_processed": len(users), "posts_created": posts_created, "errors": errors}
 
 
