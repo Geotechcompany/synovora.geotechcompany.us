@@ -314,6 +314,7 @@ class AutomationPatchRequest(BaseModel):
     frequency: Optional[str] = None  # "daily" | "weekly"
     occupation: Optional[str] = None
     auto_publish: Optional[bool] = None  # when true, auto-created posts are published to LinkedIn; when false, saved as draft
+    reset_schedule: Optional[bool] = None  # when true, clear last_auto_run_at so next cron run will process this user
 
 
 def _storage_bucket() -> str:
@@ -853,6 +854,11 @@ async def patch_automation(req: Request, body: AutomationPatchRequest):
         updates["occupation"] = (body.occupation or "").strip() or None
     if body.auto_publish is not None:
         updates["automation_auto_publish"] = body.auto_publish
+    if body.reset_schedule:
+        try:
+            user_db.clear_last_auto_run_at(clerk_user_id)
+        except Exception:
+            pass
     if not updates:
         record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
         return {

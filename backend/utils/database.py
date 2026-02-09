@@ -197,6 +197,14 @@ class FileUserDatabase:
                     out.append(dict(u))
             return out
 
+    def clear_last_auto_run_at(self, clerk_user_id: str) -> None:
+        """Clear last_auto_run_at so the next cron run will process this user (reset schedule)."""
+        with _FILE_LOCK:
+            users = self._load_users()
+            if clerk_user_id in users:
+                users[clerk_user_id].pop("last_auto_run_at", None)
+                self._save_users(users)
+
     def close(self) -> None:
         return None
 
@@ -343,6 +351,13 @@ class MongoUserDatabase:
             {"automation_enabled": True, "occupation": {"$exists": True, "$ne": None, "$nin": [""]}}
         )
         return [{k: v for k, v in d.items() if k != "_id"} for d in cursor]
+
+    def clear_last_auto_run_at(self, clerk_user_id: str) -> None:
+        """Clear last_auto_run_at so the next cron run will process this user (reset schedule)."""
+        self.collection.update_one(
+            {"clerk_user_id": clerk_user_id},
+            {"$unset": {"last_auto_run_at": 1}},
+        )
 
     def close(self) -> None:
         return None
@@ -523,6 +538,12 @@ class UserDatabase:
             if (row.get("occupation") or "").strip():
                 out.append(row)
         return out
+
+    def clear_last_auto_run_at(self, clerk_user_id: str) -> None:
+        """Clear last_auto_run_at so the next cron run will process this user (reset schedule)."""
+        self.client.table(self.table).update({"last_auto_run_at": None}).eq(
+            "clerk_user_id", clerk_user_id
+        ).execute()
 
     def close(self) -> None:
         return None

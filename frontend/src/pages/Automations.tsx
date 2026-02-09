@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserButton, useAuth } from '@clerk/clerk-react';
-import { Zap, RefreshCw, Save } from 'lucide-react';
+import { Zap, RefreshCw, Save, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 
 import { getAutomationSetting, setAutomationSetting, getAutomationLogs } from '../lib/api';
@@ -21,6 +21,7 @@ const AutomationsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [logsLoading, setLogsLoading] = useState(true);
 
   const loadSetting = async () => {
@@ -95,6 +96,21 @@ const AutomationsPage = () => {
       showToast((e as Error).message, 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleResetSchedule = async () => {
+    try {
+      setIsResetting(true);
+      const token = await getToken().catch(() => null);
+      if (!token) throw new Error('Not authenticated.');
+      const updated = await setAutomationSetting({ reset_schedule: true }, { authToken: token });
+      setSetting(updated);
+      showToast('Schedule reset. Next cron run will process you.', 'success');
+    } catch (e) {
+      showToast((e as Error).message, 'error');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -247,6 +263,21 @@ const AutomationsPage = () => {
                 <Save className="h-4 w-4" />
                 {isSaving ? 'Saving…' : 'Save settings'}
               </button>
+              <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-600">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Reset schedule</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
+                  Clear last run time so the next cron run will create a post (ignores daily/weekly limit).
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetSchedule}
+                  disabled={isResetting}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition disabled:opacity-60"
+                >
+                  <RotateCcw className={clsx('h-4 w-4', isResetting && 'animate-spin')} />
+                  {isResetting ? 'Resetting…' : 'Reset schedule'}
+                </button>
+              </div>
             </div>
           )}
         </section>
