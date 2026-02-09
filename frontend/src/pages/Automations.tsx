@@ -300,6 +300,8 @@ const AutomationsPage = () => {
                               'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300',
                             entry.status === 'partial' &&
                               'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300',
+                            entry.status === 'skipped' &&
+                              'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400',
                           )}
                         >
                           {entry.status}

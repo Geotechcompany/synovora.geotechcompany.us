@@ -913,8 +913,18 @@ def _run_automation_once() -> dict:
                 last_dt = datetime.fromisoformat(last_run.replace("Z", "+00:00"))
                 elapsed_seconds = (datetime.now(timezone.utc) - last_dt).total_seconds()
                 if freq == "daily" and elapsed_seconds < 23 * 3600:
+                    if automation_logs_store:
+                        automation_logs_store.append_log(
+                            clerk_user_id, now_iso, "skipped", 0,
+                            "Already ran in last 23h (daily limit).",
+                        )
                     continue  # already ran in last 23h, skip to avoid duplicate same-day post
                 if freq == "weekly" and elapsed_seconds < 7 * 24 * 3600:
+                    if automation_logs_store:
+                        automation_logs_store.append_log(
+                            clerk_user_id, now_iso, "skipped", 0,
+                            "Already ran in last 7 days (weekly limit).",
+                        )
                     continue  # already ran in last 7 days, skip until next week
             except Exception:
                 pass
