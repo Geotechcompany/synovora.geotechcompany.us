@@ -13,11 +13,11 @@ def create_content_creator_agent(llm):
     """Create the Content Creator agent for LinkedIn posts."""
     return Agent(
         role="LinkedIn Content Creator",
-        goal="Create engaging, high-IQ LinkedIn posts that resonate with professionals and drive meaningful engagement",
-        backstory="""You are an expert LinkedIn content creator with years of experience crafting posts that 
-        get high engagement. You understand what makes content go viral on LinkedIn - authentic insights, 
-        personal stories, thought-provoking questions, and genuine value. You write in a conversational yet 
-        professional tone that feels human, not robotic.""",
+        goal="Create informative, educational LinkedIn posts that teach readers with practical hacks and tips, and drive engagement with 6-7 hashtags",
+        backstory="""You are an expert LinkedIn content creator who specializes in educational, value-packed posts.
+        Your posts teach people something useful: concrete hacks, tips, or insights they can apply.
+        You write in a conversational yet professional tone, lead with a hook, and always include 6-7 relevant
+        hashtags at the end. You avoid fluff and make every sentence informative.""",
         llm=llm,
         verbose=True,
         allow_delegation=False
@@ -28,12 +28,13 @@ def create_editor_agent(llm):
     """Create the Editor agent for refining posts."""
     return Agent(
         role="Content Editor",
-        goal="Refine and polish LinkedIn posts to ensure they meet all quality standards and LinkedIn best practices",
+        goal="Refine and polish LinkedIn posts so they are informative, include teachable hacks, and end with 6-7 hashtags",
         backstory="""You are a meticulous editor specializing in LinkedIn content. You ensure posts are:
+        - Informative and educational (teach at least one concrete hack or tip)
         - Under 150 words
         - Have a compelling hook in the first two lines
-        - Include genuine insights
-        - End with an engaging question
+        - Include genuine insights or actionable advice
+        - End with an engaging question, then 6-7 relevant hashtags on the next line
         - Use emojis naturally (not overused)
         - Sound personal yet smart
         - Avoid jargon and corporate speak
@@ -208,14 +209,15 @@ def generate_linkedin_post(
             generation_prompt += """
 
             Requirements:
-            - Keep it under 150 words
-            - Start with a hook in the first two lines that grabs attention
-            - Include a genuine insight or thought-provoking point
-            - End with a question that encourages engagement
-            - Use emojis naturally (1-3 max, strategically placed)
-            - Avoid jargon and corporate speak
-            - Sound personal yet smart
-            - Write as if you're sharing a genuine thought, not marketing
+            - Be INFORMATIVE: teach the reader something useful (a hack, tip, or insight they can use).
+            - Include at least one concrete, actionable hack or tip (e.g. "Do X to get Y", "3 ways to...", "The one thing that changed...").
+            - Keep it under 150 words (excluding hashtags).
+            - Start with a hook in the first two lines that grabs attention.
+            - Include a genuine insight or thought-provoking point.
+            - End with a question that encourages engagement.
+            - On the LAST line, add 6 to 7 relevant hashtags (e.g. #Leadership #Productivity #CareerTips). No spaces inside hashtags; separate with spaces.
+            - Use emojis naturally (1-3 max, strategically placed).
+            - Avoid jargon and corporate speak; sound personal yet smart.
             - If live trend research is provided, incorporate ONE timely detail and keep it current.
 
             Make it feel authentic and human - like something a real person would post, not AI-generated content."""
@@ -225,7 +227,7 @@ def generate_linkedin_post(
             creation_task = Task(
                 description=generation_prompt,
                 agent=content_creator,
-                expected_output="A draft LinkedIn post about the given topic that is engaging and insightful",
+                expected_output="A draft LinkedIn post that teaches a hack or tip, is informative, and ends with 6-7 hashtags",
                 context=creation_task_context,
             )
             tasks.append(creation_task)
@@ -234,23 +236,23 @@ def generate_linkedin_post(
                 description="""
                 Review and refine the LinkedIn post draft. Ensure it:
 
-                1. Is under 150 words (strict limit)
-                2. Has a compelling hook in the first 1-2 lines
-                3. Contains genuine insights or valuable points
-                4. Ends with an engaging question
-                5. Uses emojis naturally (1-3 max, not overused)
-                6. Avoids jargon and sounds human
-                7. Is polished and ready for publication
+                1. Is INFORMATIVE and teaches at least one concrete hack or tip.
+                2. Is under 150 words (strict limit; hashtags don't count).
+                3. Has a compelling hook in the first 1-2 lines.
+                4. Contains genuine insights or actionable advice.
+                5. Ends with an engaging question, then a final line with exactly 6-7 relevant hashtags (e.g. #Leadership #Productivity).
+                6. Uses emojis naturally (1-3 max, not overused).
+                7. Avoids jargon and sounds human; is polished and ready for publication.
 
-                If the post is too long, trim it while preserving the key message and hook.
-                If it lacks a question, add one at the end.
-                Ensure the tone is personal yet professional.
+                If the post is too long, trim it while preserving the key message, hook, and hack/tip.
+                If it lacks a clear hack or tip, add one. If it lacks 6-7 hashtags, add them on the last line.
+                Ensure the tone is personal yet professional and informative.
                 Remove any outdated year references unless explicitly requested.
 
                 Output ONLY the final refined post text, nothing else.
                 """,
                 agent=editor,
-                expected_output="A polished, publication-ready LinkedIn post that meets all requirements",
+                expected_output="A polished, informative LinkedIn post with a hack/tip and 6-7 hashtags on the last line",
                 context=[creation_task],
             )
             tasks.append(editing_task)
