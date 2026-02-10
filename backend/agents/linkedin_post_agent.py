@@ -13,11 +13,13 @@ def create_content_creator_agent(llm):
     """Create the Content Creator agent for LinkedIn posts."""
     return Agent(
         role="LinkedIn Content Creator",
-        goal="Create informative, educational LinkedIn posts that teach readers with practical hacks and tips, and drive engagement with 6-7 hashtags",
-        backstory="""You are an expert LinkedIn content creator who specializes in educational, value-packed posts.
-        Your posts teach people something useful: concrete hacks, tips, or insights they can apply.
+        goal="Create educational, framework-style LinkedIn posts that teach a clear system or method (like Plan→Setup→Build), explain why it matters, and end with a strong takeaway plus 6-7 hashtags",
+        backstory="""You are an expert LinkedIn content creator who specializes in educational, framework-style posts.
+        Your posts teach like a mini-lesson: a clear structure (e.g. 3 phases, key steps, or a simple framework),
+        explain the 'why' not just the 'how', and end with one memorable big idea or takeaway.
+        You use numbered points or short bullets when it helps. You avoid fluff; every line adds value.
         You write in a conversational yet professional tone, lead with a hook, and always include 6-7 relevant
-        hashtags at the end. You avoid fluff and make every sentence informative.""",
+        hashtags at the end. Think 'system over prompt'—teach a repeatable approach, not just one random tip.""",
         llm=llm,
         verbose=True,
         allow_delegation=False
@@ -28,17 +30,14 @@ def create_editor_agent(llm):
     """Create the Editor agent for refining posts."""
     return Agent(
         role="Content Editor",
-        goal="Refine and polish LinkedIn posts so they are informative, include teachable hacks, and end with 6-7 hashtags",
-        backstory="""You are a meticulous editor specializing in LinkedIn content. You ensure posts are:
-        - Informative and educational (teach at least one concrete hack or tip)
-        - Under 150 words
-        - Have a compelling hook in the first two lines
-        - Include genuine insights or actionable advice
-        - End with an engaging question, then 6-7 relevant hashtags on the next line
-        - Use emojis naturally (not overused)
-        - Sound personal yet smart
-        - Avoid jargon and corporate speak
-        - Are ready for professional publication""",
+        goal="Refine posts so they are clearly educational: a framework or structure, a clear why, and one big takeaway, plus 6-7 hashtags",
+        backstory="""You are a meticulous editor specializing in educational LinkedIn content. You ensure posts:
+        - Teach a clear framework, system, or method (e.g. 3 steps, phases, or key principles)—not just one isolated tip
+        - Explain why it matters (context, common mistakes, or the shift in thinking)
+        - Include a memorable big idea or takeaway (one line the reader can keep)
+        - Are under 150 words (hashtags don't count), with a strong hook and 6-7 hashtags on the last line
+        - Use structure (numbered points or short bullets) when it helps clarity
+        - Sound personal yet smart; avoid jargon; are ready for publication""",
         llm=llm,
         verbose=True,
         allow_delegation=False
@@ -208,26 +207,23 @@ def generate_linkedin_post(
 
             generation_prompt += """
 
-            Requirements:
-            - Be INFORMATIVE: teach the reader something useful (a hack, tip, or insight they can use).
-            - Include at least one concrete, actionable hack or tip (e.g. "Do X to get Y", "3 ways to...", "The one thing that changed...").
-            - Keep it under 150 words (excluding hashtags).
-            - Start with a hook in the first two lines that grabs attention.
-            - Include a genuine insight or thought-provoking point.
-            - End with a question that encourages engagement.
-            - On the LAST line, add 6 to 7 relevant hashtags (e.g. #Leadership #Productivity #CareerTips). No spaces inside hashtags; separate with spaces.
-            - Use emojis naturally (1-3 max, strategically placed).
-            - Avoid jargon and corporate speak; sound personal yet smart.
+            Requirements (educational, framework-style—like a mini-lesson):
+            - Teach a clear FRAMEWORK or SYSTEM (e.g. "3 phases", "Plan → Do → Review", key steps or principles). Not just one random tip—a repeatable approach.
+            - Explain the WHY: why this matters, common mistakes, or the shift in thinking (e.g. "Stop X. Start Y.").
+            - Include one memorable BIG IDEA or takeaway (one line the reader can remember and apply).
+            - Use structure when it helps: short numbered points or bullets (e.g. "1. Plan 2. Setup 3. Build" or "Key learnings:").
+            - Keep it under 150 words (excluding hashtags). Start with a hook; end with an engaging question, then a final line with 6-7 relevant hashtags.
+            - Use emojis naturally (1-3 max). Avoid jargon; sound personal yet smart.
             - If live trend research is provided, incorporate ONE timely detail and keep it current.
 
-            Make it feel authentic and human - like something a real person would post, not AI-generated content."""
+            Make it feel like an expert sharing a framework—clear intent, structure, and one takeaway—not generic AI fluff."""
 
             # Create tasks
             creation_task_context = [trend_task] if trend_task else None
             creation_task = Task(
                 description=generation_prompt,
                 agent=content_creator,
-                expected_output="A draft LinkedIn post that teaches a hack or tip, is informative, and ends with 6-7 hashtags",
+                expected_output="A draft educational post with a clear framework (e.g. phases/steps), a why, one big takeaway, and 6-7 hashtags",
                 context=creation_task_context,
             )
             tasks.append(creation_task)
@@ -236,23 +232,21 @@ def generate_linkedin_post(
                 description="""
                 Review and refine the LinkedIn post draft. Ensure it:
 
-                1. Is INFORMATIVE and teaches at least one concrete hack or tip.
-                2. Is under 150 words (strict limit; hashtags don't count).
-                3. Has a compelling hook in the first 1-2 lines.
-                4. Contains genuine insights or actionable advice.
-                5. Ends with an engaging question, then a final line with exactly 6-7 relevant hashtags (e.g. #Leadership #Productivity).
-                6. Uses emojis naturally (1-3 max, not overused).
-                7. Avoids jargon and sounds human; is polished and ready for publication.
+                1. Teaches a clear FRAMEWORK or SYSTEM (phases, steps, or key principles)—not just one isolated tip. Has a memorable big idea or takeaway.
+                2. Explains the WHY (why it matters, common mistakes, or shift in thinking).
+                3. Is under 150 words (strict limit; hashtags don't count). Has a compelling hook in the first 1-2 lines.
+                4. Uses structure (numbered points or short bullets) where it helps.
+                5. Ends with an engaging question, then a final line with exactly 6-7 relevant hashtags.
+                6. Uses emojis naturally (1-3 max). Avoids jargon; sounds human and ready for publication.
 
-                If the post is too long, trim it while preserving the key message, hook, and hack/tip.
-                If it lacks a clear hack or tip, add one. If it lacks 6-7 hashtags, add them on the last line.
-                Ensure the tone is personal yet professional and informative.
+                If the post is too long, trim while keeping the framework, hook, and big takeaway.
+                If it lacks a clear framework or takeaway, add one. If it lacks 6-7 hashtags, add them on the last line.
                 Remove any outdated year references unless explicitly requested.
 
                 Output ONLY the final refined post text, nothing else.
                 """,
                 agent=editor,
-                expected_output="A polished, informative LinkedIn post with a hack/tip and 6-7 hashtags on the last line",
+                expected_output="A polished, educational LinkedIn post with a clear framework/structure and 6-7 hashtags on the last line",
                 context=[creation_task],
             )
             tasks.append(editing_task)
