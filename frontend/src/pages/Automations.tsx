@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserButton, useAuth } from '@clerk/clerk-react';
-import { Zap, RefreshCw, Save, RotateCcw } from 'lucide-react';
+import { Zap, RefreshCw, Save, RotateCcw, Plus, X } from 'lucide-react';
 import clsx from 'clsx';
 
 import { getAutomationSetting, setAutomationSetting, getAutomationLogs } from '../lib/api';
@@ -14,7 +14,8 @@ const AutomationsPage = () => {
   const { getToken, isLoaded } = useAuth();
   const { showToast } = useModal();
   const [setting, setSetting] = useState<AutomationSettingType | null>(null);
-  const [occupationDraft, setOccupationDraft] = useState('');
+  const [occupationsDraft, setOccupationsDraft] = useState<string[]>([]);
+  const [newProfessionInput, setNewProfessionInput] = useState('');
   const [frequencyDraft, setFrequencyDraft] = useState<'daily' | 'weekly'>('daily');
   const [autoPublishDraft, setAutoPublishDraft] = useState(false);
   const [logs, setLogs] = useState<AutomationLogEntry[]>([]);
@@ -31,7 +32,9 @@ const AutomationsPage = () => {
       if (!t) return;
       const data = await getAutomationSetting({ authToken: t });
       setSetting(data);
-      setOccupationDraft(data.occupation ?? '');
+      setOccupationsDraft(Array.isArray(data.occupations) && data.occupations.length > 0
+        ? data.occupations
+        : data.occupation ? [data.occupation] : []);
       setFrequencyDraft((data.frequency as 'daily' | 'weekly') || 'daily');
       setAutoPublishDraft(data.auto_publish ?? false);
     } catch (e) {
@@ -63,8 +66,9 @@ const AutomationsPage = () => {
   }, [isLoaded]);
 
   const handleToggle = async (enabled: boolean) => {
-    if (enabled && !(occupationDraft || (setting?.occupation ?? '')).trim()) {
-      showToast('Set your profession below before enabling automation.', 'warning');
+    const hasProfession = occupationsDraft.some((o) => (o || '').trim());
+    if (enabled && !hasProfession) {
+      showToast('Add at least one profession below before enabling automation.', 'warning');
       return;
     }
     try {
@@ -81,16 +85,32 @@ const AutomationsPage = () => {
     }
   };
 
+  const addProfession = () => {
+    const v = newProfessionInput.trim();
+    if (!v) return;
+    if (occupationsDraft.includes(v)) {
+      showToast('Already in the list.', 'warning');
+      return;
+    }
+    setOccupationsDraft((prev) => [...prev, v]);
+    setNewProfessionInput('');
+  };
+
+  const removeProfession = (index: number) => {
+    setOccupationsDraft((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSaveSettings = async () => {
     try {
       setIsSaving(true);
       const token = await getToken().catch(() => null);
       if (!token) throw new Error('Not authenticated.');
       const updated = await setAutomationSetting(
-        { occupation: occupationDraft.trim() || undefined, frequency: frequencyDraft, auto_publish: autoPublishDraft },
+        { occupations: occupationsDraft.filter((o) => (o || '').trim()), frequency: frequencyDraft, auto_publish: autoPublishDraft },
         { authToken: token },
       );
       setSetting(updated);
+      setOccupationsDraft(Array.isArray(updated.occupations) ? updated.occupations : updated.occupation ? [updated.occupation] : []);
       showToast('Settings saved.', 'success');
     } catch (e) {
       showToast((e as Error).message, 'error');
@@ -199,18 +219,52 @@ const AutomationsPage = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Profession / occupation
+                  Professions (we pick one per run)
                 </label>
-                <input
-                  type="text"
-                  value={occupationDraft}
-                  onChange={(e) => setOccupationDraft(e.target.value)}
-                  placeholder="e.g. Software Engineering, Marketing"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition"
-                />
-                {((setting?.enabled ?? false) && !(occupationDraft || (setting?.occupation ?? '')).trim()) && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
+                  Add one or more professions. Each automation run will use one of them at random for trends and post content.
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  <input
+                    type="text"
+                    value={newProfessionInput}
+                    onChange={(e) => setNewProfessionInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addProfession())}
+                    placeholder="e.g. Software Engineering, Marketing"
+                    className="flex-1 min-w-[180px] px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={addProfession}
+                    className="inline-flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-200 text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-500 transition"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </button>
+                </div>
+                {occupationsDraft.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {occupationsDraft.map((prof, i) => (
+                      <li
+                        key={i}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-800 dark:text-amber-200 text-sm"
+                      >
+                        {prof}
+                        <button
+                          type="button"
+                          onClick={() => removeProfession(i)}
+                          className="p-0.5 rounded hover:bg-amber-500/20 dark:hover:bg-amber-500/30 focus:outline-none"
+                          aria-label={`Remove ${prof}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {((setting?.enabled ?? false) && occupationsDraft.length === 0) && (
                   <p className="mt-1.5 text-sm text-amber-600 dark:text-amber-400">
-                    Set your profession above so we can find relevant trends.
+                    Add at least one profession so we can find relevant trends.
                   </p>
                 )}
               </div>

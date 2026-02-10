@@ -2,6 +2,7 @@
 
 import os
 import base64
+import random
 import warnings
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -317,9 +318,27 @@ class TopicSuggestRequest(BaseModel):
 class AutomationPatchRequest(BaseModel):
     enabled: Optional[bool] = None
     frequency: Optional[str] = None  # "daily" | "weekly"
-    occupation: Optional[str] = None
+    occupation: Optional[str] = None  # legacy single profession
+    occupations: Optional[List[str]] = None  # list of professions; AI picks one per run
     auto_publish: Optional[bool] = None  # when true, auto-created posts are published to LinkedIn; when false, saved as draft
     reset_schedule: Optional[bool] = None  # when true, clear last_auto_run_at so next cron run will process this user
+
+
+def _occupations_list(record: dict) -> List[str]:
+    """Return list of non-empty profession strings from user record (occupations list or legacy occupation)."""
+    occupations = record.get("occupations")
+    if isinstance(occupations, list):
+        out = [str(x).strip() for x in occupations if (x or "").strip()]
+        if out:
+            return out
+    single = (record.get("occupation") or "").strip()
+    return [single] if single else []
+
+
+def _pick_one_occupation(user_record: dict) -> Optional[str]:
+    """Pick one profession from the user's list at random (for this automation run)."""
+    lst = _occupations_list(user_record)
+    return random.choice(lst) if lst else None
 
 
 def _storage_bucket() -> str:
@@ -882,13 +901,15 @@ async def suggest_topics_endpoint(req: Request, request: TopicSuggestRequest):
 
 @app.get("/me/automation")
 async def get_automation(req: Request):
-    """Get current user's automation settings (enabled, occupation, frequency, last_run_at)."""
+    """Get current user's automation settings (enabled, occupation(s), frequency, last_run_at)."""
     clerk_user_id = _require_clerk_user_id(req)
     _require_user_db()
     record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+    occupations = _occupations_list(record)
     return {
         "enabled": bool(record.get("automation_enabled")),
-        "occupation": record.get("occupation"),
+        "occupation": record.get("occupation") or (occupations[0] if occupations else None),
+        "occupations": occupations,
         "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
         "last_run_at": record.get("last_auto_run_at"),
         "auto_publish": bool(record.get("automation_auto_publish")),
@@ -897,24 +918,39 @@ async def get_automation(req: Request):
 
 @app.patch("/me/automation")
 async def patch_automation(req: Request, body: AutomationPatchRequest):
-    """Update current user's automation settings. Set occupation before enabling."""
+    """Update current user's automation settings. Set profession(s) before enabling."""
     clerk_user_id = _require_clerk_user_id(req)
     _require_user_db()
     record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
     updates = {}
     if body.enabled is not None:
-        if body.enabled and not (record.get("occupation") or "").strip() and not (body.occupation or "").strip():
+        current_list = _occupations_list(record)
+        new_list = (
+            [x.strip() for x in (body.occupations or []) if (x or "").strip()]
+            if body.occupations is not None
+            else ([body.occupation.strip()] if (body.occupation or "").strip() else [])
+            if body.occupation is not None
+            else None
+        )
+        has_profession = bool(current_list) or (new_list is not None and bool(new_list))
+        if body.enabled and not has_profession:
             raise HTTPException(
                 status_code=400,
-                detail="Set your profession (occupation) before enabling automation.",
+                detail="Add at least one profession before enabling automation.",
             )
         updates["automation_enabled"] = body.enabled
     if body.frequency is not None:
         if body.frequency not in ("daily", "weekly"):
             raise HTTPException(status_code=400, detail="frequency must be 'daily' or 'weekly'")
         updates["automation_frequency"] = body.frequency
-    if body.occupation is not None:
-        updates["occupation"] = (body.occupation or "").strip() or None
+    if body.occupations is not None:
+        occupations = [x.strip() for x in body.occupations if (x or "").strip()]
+        updates["occupations"] = occupations
+        updates["occupation"] = occupations[0] if occupations else None
+    elif body.occupation is not None:
+        single = (body.occupation or "").strip()
+        updates["occupation"] = single or None
+        updates["occupations"] = [single] if single else []
     if body.auto_publish is not None:
         updates["automation_auto_publish"] = body.auto_publish
     if body.reset_schedule:
@@ -924,18 +960,22 @@ async def patch_automation(req: Request, body: AutomationPatchRequest):
             pass
     if not updates:
         record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+        occupations = _occupations_list(record)
         return {
             "enabled": bool(record.get("automation_enabled")),
-            "occupation": record.get("occupation"),
+            "occupation": record.get("occupation") or (occupations[0] if occupations else None),
+            "occupations": occupations,
             "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
             "last_run_at": record.get("last_auto_run_at"),
             "auto_publish": bool(record.get("automation_auto_publish")),
         }
     user_db.upsert_user({"clerk_user_id": clerk_user_id, **updates})
     record = user_db.get_user_by_clerk_id(clerk_user_id) or {}
+    occupations = _occupations_list(record)
     return {
         "enabled": bool(record.get("automation_enabled")),
-        "occupation": record.get("occupation"),
+        "occupation": record.get("occupation") or (occupations[0] if occupations else None),
+        "occupations": occupations,
         "frequency": (record.get("automation_frequency") or "daily").strip() or "daily",
         "last_run_at": record.get("last_auto_run_at"),
         "auto_publish": bool(record.get("automation_auto_publish")),
@@ -972,7 +1012,7 @@ def _run_automation_once() -> dict:
     max_error_len = 200
     for u in users:
         clerk_user_id = u.get("clerk_user_id")
-        occupation = (u.get("occupation") or "").strip()
+        occupation = _pick_one_occupation(u)
         if not clerk_user_id or not occupation:
             continue
         last_run = u.get("last_auto_run_at")

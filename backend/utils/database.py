@@ -193,7 +193,14 @@ class FileUserDatabase:
             users = self._load_users()
             out = []
             for u in users.values():
-                if u.get("automation_enabled") and (u.get("occupation") or "").strip():
+                if not u.get("automation_enabled"):
+                    continue
+                occ = (u.get("occupation") or "").strip()
+                occs = u.get("occupations")
+                has_profession = bool(occ) or (
+                    isinstance(occs, list) and any((x or "").strip() for x in occs)
+                )
+                if has_profession:
                     out.append(dict(u))
             return out
 
@@ -348,9 +355,22 @@ class MongoUserDatabase:
 
     def list_users_with_automation(self) -> List[Dict[str, Any]]:
         cursor = self.collection.find(
-            {"automation_enabled": True, "occupation": {"$exists": True, "$ne": None, "$nin": [""]}}
+            {
+                "automation_enabled": True,
+                "$or": [
+                    {"occupation": {"$exists": True, "$ne": None, "$nin": [""]}},
+                    {"occupations.0": {"$exists": True}},
+                ],
+            }
         )
-        return [{k: v for k, v in d.items() if k != "_id"} for d in cursor]
+        out = []
+        for d in cursor:
+            doc = {k: v for k, v in d.items() if k != "_id"}
+            occ = (doc.get("occupation") or "").strip()
+            occs = doc.get("occupations") or []
+            if occ or (isinstance(occs, list) and any((x or "").strip() for x in occs)):
+                out.append(doc)
+        return out
 
     def clear_last_auto_run_at(self, clerk_user_id: str) -> None:
         """Clear last_auto_run_at so the next cron run will process this user (reset schedule)."""
@@ -530,12 +550,13 @@ class UserDatabase:
             self.client.table(self.table)
             .select("*")
             .eq("automation_enabled", True)
-            .not_.is_("occupation", "null")
             .execute()
         )
         out = []
         for row in result.data or []:
-            if (row.get("occupation") or "").strip():
+            occ = (row.get("occupation") or "").strip()
+            occs = row.get("occupations") or []
+            if occ or (isinstance(occs, list) and any((x or "").strip() for x in occs)):
                 out.append(row)
         return out
 

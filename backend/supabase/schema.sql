@@ -46,6 +46,7 @@ create table if not exists public.clerk_users (
   linkedin_last_checked_at timestamptz,
   linkedin_status_message text,
   occupation text,
+  occupations jsonb default '[]'::jsonb,
   automation_enabled boolean not null default false,
   automation_frequency text not null default 'daily' check (automation_frequency in ('daily', 'weekly')),
   last_auto_run_at timestamptz,

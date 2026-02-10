@@ -147,6 +147,7 @@ export interface ClerkUserSyncPayload {
 export interface AutomationSetting {
   enabled: boolean;
   occupation: string | null;
+  occupations?: string[];
   frequency: 'daily' | 'weekly';
   last_run_at: string | null;
   auto_publish: boolean;
