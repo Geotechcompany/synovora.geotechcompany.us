@@ -1,0 +1,15 @@
+# Trigger Synovora automation every 30 minutes.
+# Backend returns 202 and runs automation in background; we allow up to 2 min for cold start.
+name: Synovora automation
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call cron/run-automation
+        run: |
+          curl -sf --max-time 120 -X GET "https://synovora-geotechcompany-us.onrender.com/cron/run-automation"
