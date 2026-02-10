@@ -54,6 +54,11 @@ from utils.database import (
     get_supabase_storage_client,
 )
 from utils.image_generator import generate_post_image
+
+try:
+    from langchain_openai import ChatOpenAI
+except Exception:
+    ChatOpenAI = None
 from utils.linkedin_api import LinkedInAPI, exchange_code_for_token, get_oauth_url
 from utils.mailer import EmailSender
 from utils.profile_scraper import (
@@ -324,6 +329,61 @@ def _storage_bucket() -> str:
 def _slugify(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip()).strip("-").lower()
     return cleaned or "post"
+
+
+def _generate_image_prompt_with_llm(
+    topic: str, content: str, openai_api_key: Optional[str] = None
+) -> Optional[str]:
+    """
+    Use LLM to generate a single-sentence image prompt that fully reflects the post content.
+    Returns None if no API key or on failure.
+    """
+    api_key = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip()
+    if not api_key or ChatOpenAI is None:
+        return None
+    content_preview = (content or "")[:600].strip()
+    topic_line = (topic or "").strip()
+    if not topic_line and not content_preview:
+        return None
+    try:
+        llm = ChatOpenAI(
+            model=os.getenv("OPENAI_IMAGE_PROMPT_MODEL", "gpt-4o-mini"),
+            api_key=api_key,
+            temperature=0.4,
+            max_tokens=120,
+        )
+        prompt = f"""Given this LinkedIn post topic and content, write ONE sentence as an image generation prompt for DALL-E.
+Describe the visual that best matches the post: the subject, mood, and style (e.g. illustration, diagram, photograph, infographic, minimalist).
+The image must have NO text or labels in it. Choose a style that fits the content (workflow → diagram/illustration; story → scene; tips → clean graphic).
+Topic: {topic_line or 'N/A'}
+Content:
+{content_preview or 'N/A'}
+
+Output ONLY the image prompt, nothing else. One sentence only."""
+        result = llm.invoke(prompt)
+        out = (getattr(result, "content", None) or str(result)).strip()
+        if out and len(out) > 10:
+            return out
+    except Exception:
+        pass
+    return None
+
+
+def _build_image_prompt_for_post(
+    topic: str, content_snippet: str, openai_api_key: Optional[str] = None
+) -> str:
+    """
+    Build an image prompt fully from the post content. Uses LLM when possible for a dynamic
+    prompt; otherwise a content-based fallback (no keyword rules).
+    """
+    dynamic = _generate_image_prompt_with_llm(topic, content_snippet, openai_api_key)
+    if dynamic:
+        return dynamic
+    subject = (topic or "").strip() or (content_snippet[:100] if content_snippet else "").strip() or "Professional insight"
+    return (
+        f"Professional visual for LinkedIn: {subject}. "
+        "Clean, modern style that matches the post theme. No text or labels in the image. High quality."
+    )
 
 
 def _upload_image(*, image_bytes: bytes, mime_type: str, topic: str, post_id: Optional[int] = None) -> Optional[dict]:
@@ -694,8 +754,11 @@ async def generate_post(req: Request, request: PostGenerateRequest):
         image_storage_path = None
         if os.getenv("HF_TOKEN"):
             try:
-                prompt_base = request.topic or post_content[:120]
-                styled_prompt = f"{prompt_base}. Hyper-realistic, cinematic lighting, 4k professional LinkedIn lifestyle photography."
+                styled_prompt = _build_image_prompt_for_post(
+                    request.topic or "",
+                    post_content[:600] if post_content else "",
+                    openai_api_key=openai_api_key,
+                )
                 image_bytes = generate_post_image(styled_prompt, None)
                 image_mime_type = "image/png"
                 uploaded = _upload_image(
@@ -956,8 +1019,10 @@ def _run_automation_once() -> dict:
             image_storage_path_auto = None
             if os.getenv("OPENAI_API_KEY") and os.getenv("CRON_AUTOMATION_SKIP_IMAGE", "").strip().lower() not in ("1", "true", "yes", "on"):
                 try:
-                    prompt_base = topic or content[:120]
-                    styled_prompt = f"{prompt_base}. Hyper-realistic, cinematic lighting, 4k professional LinkedIn lifestyle photography."
+                    openai_key = _get_openai_key_for_user(clerk_user_id)
+                    styled_prompt = _build_image_prompt_for_post(
+                        topic or "", content[:600] if content else "", openai_api_key=openai_key
+                    )
                     image_bytes = generate_post_image(styled_prompt, None)
                     image_mime_auto = "image/png"
                     uploaded = _upload_image(
