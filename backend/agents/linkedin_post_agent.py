@@ -13,7 +13,7 @@ def create_content_creator_agent(llm):
     """Create the Content Creator agent for LinkedIn posts."""
     return Agent(
         role="LinkedIn Content Creator",
-        goal="Create clean, human-written, educational LinkedIn posts that teach a clear system or method (like Plan→Setup→Build), explain why it matters, and end with a strong takeaway (no hashtags, no markdown formatting).",
+        goal="Create clean, human-written, educational LinkedIn posts that teach a clear system or method (like Plan→Setup→Build), explain why it matters, end with a strong takeaway, and always include 4–7 relevant hashtags at the end (no markdown formatting).",
         backstory="""You are an expert LinkedIn content creator who specializes in educational, framework-style posts.
         Your posts teach like a mini-lesson: a clear structure (e.g. 3 phases, key steps, or a simple framework),
         explain the 'why' not just the 'how', and end with one memorable big idea or takeaway.
@@ -22,8 +22,8 @@ def create_content_creator_agent(llm):
         (a system), not just one random tip.
 
         Formatting rules:
-        - Output MUST be plain text only (no markdown).
-        - Do NOT use asterisks, bold, headings, or hashtag lines.""",
+        - Output MUST be plain text only (no markdown such as bold, headings, or code blocks).
+        - End with 4–7 relevant hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth).""",
         llm=llm,
         verbose=True,
         allow_delegation=False
@@ -34,12 +34,12 @@ def create_editor_agent(llm):
     """Create the Editor agent for refining posts."""
     return Agent(
         role="Content Editor",
-        goal="Refine posts so they are clearly educational: a framework or structure, a clear why, and one big takeaway (plain text only; no hashtags, no markdown).",
+        goal="Refine posts so they are clearly educational: a framework or structure, a clear why, one big takeaway, and a clean block of 4–7 relevant hashtags at the end (plain text only, no markdown).",
         backstory="""You are a meticulous editor specializing in educational LinkedIn content. You ensure posts:
         - Teach a clear framework, system, or method (e.g. 3 steps, phases, or key principles)—not just one isolated tip
         - Explain why it matters (context, common mistakes, or the shift in thinking)
         - Include a memorable big idea or takeaway (one line the reader can keep)
-        - Are under 150 words, with a strong hook (no hashtag line)
+        - Are under 150 words, with a strong hook
         - Use structure (numbered points or short bullets) when it helps clarity
         - Sound personal yet smart; avoid jargon; are ready for publication""",
         llm=llm,
@@ -212,13 +212,13 @@ def generate_linkedin_post(
             generation_prompt += """
 
             Requirements (educational, framework-style—like a mini-lesson):
-            - Output MUST be plain text only (no markdown). Do NOT use asterisks, bold, headings, or hashtag lines.
+            - Output MUST be plain text only (no markdown such as bold, headings, or code blocks).
             - Teach a clear FRAMEWORK or SYSTEM (e.g. "3 phases", "Plan → Do → Review", key steps or principles). Not just one random tip—a repeatable approach.
             - Explain the WHY: why this matters, common mistakes, or the shift in thinking (e.g. "Stop X. Start Y.").
             - Include one memorable BIG IDEA or takeaway (one line the reader can remember and apply).
             - Use structure when it helps: short numbered points or short bullets (but keep it clean and readable).
             - Keep it under 150 words. Start with a hook; end with an engaging question.
-            - No hashtags.
+            - End with 4–7 relevant, niche-specific hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth). Keep them lowercase words with # and no extra punctuation.
             - Use emojis naturally (0-2 max). Avoid jargon; sound personal yet smart.
             - If live trend research is provided, incorporate ONE timely detail and keep it current.
 
@@ -229,7 +229,7 @@ def generate_linkedin_post(
             creation_task = Task(
                 description=generation_prompt,
                 agent=content_creator,
-                expected_output="A clean, plain-text educational post with a clear framework (phases/steps), a why, and one big takeaway (no hashtags, no markdown).",
+                expected_output="A clean, plain-text educational post with a clear framework (phases/steps), a why, one big takeaway, and 4–7 relevant hashtags at the end (no markdown).",
                 context=creation_task_context,
             )
             tasks.append(creation_task)
@@ -238,23 +238,23 @@ def generate_linkedin_post(
                 description="""
                 Review and refine the LinkedIn post draft. Ensure it:
 
-                1. Is plain text only (NO markdown). Do NOT use asterisks, bold, headings, or hashtag lines.
+                1. Is plain text only (NO markdown such as bold, headings, or code blocks).
                 2. Teaches a clear FRAMEWORK or SYSTEM (phases, steps, or key principles)—not just one isolated tip. Has a memorable big idea or takeaway.
                 3. Explains the WHY (why it matters, common mistakes, or shift in thinking).
                 4. Is under 150 words (strict limit). Has a compelling hook in the first 1-2 lines.
                 5. Uses structure (numbered points or short bullets) where it helps.
                 6. Ends with an engaging question.
-                7. Has NO hashtags.
+                7. Ends with a clean block of 4–7 relevant, niche-specific hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth). Tags should be plain words with # and no extra punctuation.
                 8. Uses emojis naturally (0-2 max). Avoids jargon; sounds human and ready for publication.
 
                 If the post is too long, trim while keeping the framework, hook, and big takeaway.
-                If it lacks a clear framework or takeaway, add one. If it contains hashtags or markdown symbols, remove them.
+                If it lacks a clear framework or takeaway, add one. If it contains markdown symbols (like **bold** or headings), remove them while keeping or adding the final hashtags block.
                 Remove any outdated year references unless explicitly requested.
 
                 Output ONLY the final refined post text, nothing else.
                 """,
                 agent=editor,
-                expected_output="A polished, educational LinkedIn post in clean plain text (no hashtags, no markdown).",
+                expected_output="A polished, educational LinkedIn post in clean plain text with a clear framework and 4–7 relevant hashtags at the end (no markdown).",
                 context=[creation_task],
             )
             tasks.append(editing_task)
