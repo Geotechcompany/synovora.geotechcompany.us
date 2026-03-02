@@ -372,8 +372,8 @@ def _generate_image_prompt_with_llm(
             max_tokens=120,
         )
         prompt = f"""Given this LinkedIn post topic and content, write ONE sentence as an image generation prompt for DALL-E.
-Describe the visual that best matches the post: the subject, mood, and style (e.g. illustration, diagram, photograph, infographic, minimalist).
-The image must have NO text or labels in it. Choose a style that fits the content (workflow → diagram/illustration; story → scene; tips → clean graphic).
+Describe a super-realistic, high-resolution photograph with real people that best matches the post: the subject, setting, mood, and composition.
+The image must have NO text or labels in it. It should look like a natural candid or documentary-style photo, suitable for a professional LinkedIn audience.
 Topic: {topic_line or 'N/A'}
 Content:
 {content_preview or 'N/A'}
@@ -400,8 +400,8 @@ def _build_image_prompt_for_post(
         return dynamic
     subject = (topic or "").strip() or (content_snippet[:100] if content_snippet else "").strip() or "Professional insight"
     return (
-        f"Professional visual for LinkedIn: {subject}. "
-        "Clean, modern style that matches the post theme. No text or labels in the image. High quality."
+        f"Super-realistic, high-resolution photograph of real people for LinkedIn about: {subject}. "
+        "Natural lighting, authentic expressions, modern professional setting. No text or labels in the image."
     )
 
 
