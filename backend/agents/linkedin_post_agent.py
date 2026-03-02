@@ -13,10 +13,12 @@ def create_content_creator_agent(llm):
     """Create the Content Creator agent for LinkedIn posts."""
     return Agent(
         role="LinkedIn Content Creator",
-        goal="Create clean, human-written, educational LinkedIn posts that teach a clear system or method (like Plan→Setup→Build), explain why it matters, end with a strong takeaway, and always include 4–7 relevant hashtags at the end (no markdown formatting).",
+        goal="Create clean, human-written, educational LinkedIn posts that teach a clear system or method (like Plan→Setup→Build), explain why it matters, include concrete hacks people can apply this week, end with a strong takeaway, and always include 4–7 relevant hashtags at the end (no markdown formatting).",
         backstory="""You are an expert LinkedIn content creator who specializes in educational, framework-style posts.
         Your posts teach like a mini-lesson: a clear structure (e.g. 3 phases, key steps, or a simple framework),
         explain the 'why' not just the 'how', and end with one memorable big idea or takeaway.
+        You include specific, practical hacks and moves that people can apply within a week (e.g. scripts, questions to ask, small process changes).
+        You vary the layout from post to post: sometimes a short narrative then bullets, sometimes a bold contrast (Old way vs New way), sometimes a tight numbered list of hacks.
         You use numbered points or short bullets when it helps. You avoid fluff; every line adds value.
         You write in a conversational yet professional tone, lead with a hook, and teach a repeatable approach
         (a system), not just one random tip.
@@ -214,8 +216,10 @@ def generate_linkedin_post(
             Requirements (educational, framework-style—like a mini-lesson):
             - Output MUST be plain text only (no markdown such as bold, headings, or code blocks).
             - Teach a clear FRAMEWORK or SYSTEM (e.g. "3 phases", "Plan → Do → Review", key steps or principles). Not just one random tip—a repeatable approach.
+            - Include at least 2–3 very practical hacks or moves that the reader can apply this week (e.g. exact questions to ask, micro-routines, checklists, templates in words).
             - Explain the WHY: why this matters, common mistakes, or the shift in thinking (e.g. "Stop X. Start Y.").
             - Include one memorable BIG IDEA or takeaway (one line the reader can remember and apply).
+            - Vary the layout so it doesn't always look the same: sometimes a short story then bullets, sometimes "Old way vs New way", sometimes a tight numbered list of hacks. Choose the layout that best fits this topic.
             - Use structure when it helps: short numbered points or short bullets (but keep it clean and readable).
             - Keep it under 150 words. Start with a hook; end with an engaging question.
             - End with 4–7 relevant, niche-specific hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth). Keep them lowercase words with # and no extra punctuation.
@@ -240,15 +244,16 @@ def generate_linkedin_post(
 
                 1. Is plain text only (NO markdown such as bold, headings, or code blocks).
                 2. Teaches a clear FRAMEWORK or SYSTEM (phases, steps, or key principles)—not just one isolated tip. Has a memorable big idea or takeaway.
-                3. Explains the WHY (why it matters, common mistakes, or shift in thinking).
-                4. Is under 150 words (strict limit). Has a compelling hook in the first 1-2 lines.
-                5. Uses structure (numbered points or short bullets) where it helps.
-                6. Ends with an engaging question.
-                7. Ends with a clean block of 4–7 relevant, niche-specific hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth). Tags should be plain words with # and no extra punctuation.
-                8. Uses emojis naturally (0-2 max). Avoids jargon; sounds human and ready for publication.
+                3. Contains at least 2–3 concrete, easy-to-apply hacks or moves the reader can try this week.
+                4. Explains the WHY (why it matters, common mistakes, or shift in thinking).
+                5. Is under 150 words (strict limit). Has a compelling hook in the first 1-2 lines.
+                6. Uses a layout that feels intentional and not repetitive: e.g. short story then bullets, or Old way vs New way, or a tight numbered list of hacks—pick what best fits the draft.
+                7. Ends with an engaging question.
+                8. Ends with a clean block of 4–7 relevant, niche-specific hashtags on the last 1–2 lines (e.g. #productmanagement #saasgrowth). Tags should be plain words with # and no extra punctuation.
+                9. Uses emojis naturally (0-2 max). Avoids jargon; sounds human and ready for publication.
 
-                If the post is too long, trim while keeping the framework, hook, and big takeaway.
-                If it lacks a clear framework or takeaway, add one. If it contains markdown symbols (like **bold** or headings), remove them while keeping or adding the final hashtags block.
+                If the post is too long, trim while keeping the framework, hacks, hook, and big takeaway.
+                If it lacks a clear framework, hacks, or takeaway, add them. If it contains markdown symbols (like **bold** or headings), remove them while keeping or adding the final hashtags block.
                 Remove any outdated year references unless explicitly requested.
 
                 Output ONLY the final refined post text, nothing else.
