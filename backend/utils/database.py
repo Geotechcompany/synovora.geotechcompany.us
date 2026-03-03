@@ -238,6 +238,12 @@ class MongoPostDatabase:
         client = _get_mongo_client()
         self.db = client.get_default_database() if not db_name else client[db_name]
         self.collection = self.db[collection_name or "posts"]
+        # Ensure we have an index on id so sorted queries do not hit the in-memory sort limit.
+        try:
+            self.collection.create_index([("id", -1)])
+        except Exception:
+            # If index creation fails, we still continue; Mongo will handle queries, but may fall back to in-memory sort.
+            pass
 
     def _next_id(self) -> int:
         with _FILE_LOCK:
